@@ -5,13 +5,25 @@ import { env } from './config/env.js';
 import authRoutes from './routes/auth.js';
 import dashboardRoutes from './routes/dashboard.js';
 import leaseRoutes from './routes/leases.js';
+import { getSystemStatus } from './services/healthCheck.js';
+import { renderLanding } from './views/landing.js';
 
 const app = express();
 
 app.use(cors({ origin: env.corsOrigin }));
 app.use(express.json());
 
+app.get('/', async (_req, res) => {
+  const status = await getSystemStatus();
+  res.status(status.status === 'ok' ? 200 : 503).type('html').send(renderLanding(status, { uiUrl: env.corsOrigin }));
+});
+
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+app.get('/api/status', async (_req, res) => {
+  const status = await getSystemStatus();
+  res.status(status.status === 'ok' ? 200 : 503).json(status);
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
