@@ -48,10 +48,13 @@ export interface SearchQuery {
 /** Turn a natural-language question into an OR full-text query (stop words removed, simple plural/synonym variants). */
 export function buildSearchQuery(question: string, maxTerms = 12): SearchQuery {
   const words = question
+    // Money amounts and percentages rarely appear verbatim in the text and match unrelated numbers (addresses).
+    .replace(/[$€£]\s?\d[\d.,]*\s?[kKmM]?\b/g, ' ')
+    .replace(/\b\d[\d.,]*\s?(%|percent|prozent|por ?ciento|por ?cento|per ?cento)/gi, ' ')
     .toLowerCase()
     .normalize('NFC')
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((w) => w.length > 1 && !STOP_WORDS.has(w) && !/^\d{1,2}$/.test(w));
+    .filter((w) => w.length > 1 && !STOP_WORDS.has(w) && !/^\d{1,2}$/.test(w) && !/^0+$/.test(w));
   const terms: string[] = [];
   for (const w of words) if (!terms.includes(w)) terms.push(w);
   const limited = terms.slice(0, maxTerms);
@@ -62,7 +65,7 @@ export function buildSearchQuery(question: string, maxTerms = 12): SearchQuery {
     if (/^\p{L}+$/u.test(term) && term.length > 3) {
       if (term.endsWith('ies')) variants.add(`${term.slice(0, -3)}y`);
       else if (term.endsWith('s') && !term.endsWith('ss')) variants.add(term.slice(0, -1));
-      else variants.add(`${term}s`);
+      else if (!/(ed|ing)$/.test(term)) variants.add(`${term}s`);
     }
     for (const syn of SYNONYMS[term] ?? []) variants.add(syn);
   }

@@ -253,6 +253,8 @@ router.get('/orgs', async (c) => {
       id: o.id, name: o.name, currency: o.currency, logo_url: publicLogoUrl(o.logo_path), created_at: o.created_at,
       member_count: await countOf('org_members', o.id),
       lease_count: await countOf('leases', o.id),
+      file_count: await countOf('lease_files', o.id),
+      document_count: await countOf('documents', o.id),
       domains: (domains ?? []).filter((d) => d.org_id === o.id).map((d) => d.domain as string),
     }))),
   );

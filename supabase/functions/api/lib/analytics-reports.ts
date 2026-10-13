@@ -123,6 +123,7 @@ export async function buildReport(orgId: string, f: ReportFilters) {
   }
   const rent_by_landlord = [...byLandlord.entries()]
     .map(([landlord, annual_rent]) => ({ landlord, annual_rent: round2(annual_rent) }))
+    .filter((r) => r.annual_rent > 0)
     .sort((a, b) => b.annual_rent - a.annual_rent)
     .slice(0, 10);
 

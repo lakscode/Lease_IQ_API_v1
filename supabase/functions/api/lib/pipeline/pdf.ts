@@ -32,7 +32,7 @@ export async function extractPageTexts(bytes: Uint8Array): Promise<string[]> {
     const { text } = await extractText(proxy, { mergePages: false });
     return text.map((t) => normalizeText(t));
   } finally {
-    await proxy.destroy().catch(() => undefined);
+    await proxy.loadingTask.destroy().catch(() => undefined);
   }
 }
 

@@ -172,7 +172,7 @@ export async function generateInsights(input: { orgId: string; userId: string; l
   const { orgId, leaseId } = input;
   const lease = must(await db().from('leases')
     .select('id, tenant_name, premises_address, property_type, rentable_area, base_rent_monthly, commencement_date, expiration_date, status, current_terms, market_rate_id, market_rate_override')
-    .eq('id', leaseId).eq('org_id', orgId).single());
+    .eq('id', leaseId).eq('org_id', orgId).single())!;
   const { data: docRows } = await db().from('documents')
     .select('id, doc_type, title, effective_date, created_at, page_start, abstract, changes_made, file_id, storage_path, page_count')
     .eq('org_id', orgId).eq('lease_id', leaseId);

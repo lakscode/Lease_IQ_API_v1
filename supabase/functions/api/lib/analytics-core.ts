@@ -206,6 +206,7 @@ export function normalizeName(name: string | null | undefined): string {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/&/g, ' and ')
+    .replace(/\./g, '') // "L.L.C." → "llc"
     .replace(/[^a-z0-9]+/g, ' ')
     .split(' ')
     .filter((t) => t && !LEGAL_SUFFIXES.has(t))

@@ -76,7 +76,7 @@ router.post('/conversations', async (c) => {
     user_id: c.get('user').id,
     title: str(body.title)?.slice(0, 120) ?? null,
     ...scope,
-  }).select(CONVERSATION_COLUMNS).single());
+  }).select(CONVERSATION_COLUMNS).single())!;
   const label = await scopeLabels(c.get('orgId'), [row]);
   return c.json({ ...row, ...label(row) }, 201);
 });
@@ -96,7 +96,7 @@ router.patch('/conversations/:id', async (c) => {
   const title = str(body.title);
   if (!title) throw badRequest('Title is required');
   const row = must(await db().from('chat_conversations').update({ title: title.slice(0, 120) })
-    .eq('id', conversation.id).select(CONVERSATION_COLUMNS).single());
+    .eq('id', conversation.id).select(CONVERSATION_COLUMNS).single())!;
   return c.json(row);
 });
 
@@ -162,7 +162,7 @@ router.post('/conversations/:id/messages', async (c) => {
 
   const userMsg = must(await db().from('chat_messages')
     .insert({ conversation_id: conversation.id, role: 'user', content: question })
-    .select('id, role, content, citations, usage, created_at').single());
+    .select('id, role, content, citations, usage, created_at').single())!;
 
   let result;
   try {
@@ -178,14 +178,14 @@ router.post('/conversations/:id/messages', async (c) => {
 
   const assistantMsg = must(await db().from('chat_messages').insert({
     conversation_id: conversation.id, role: 'assistant', content: result.answer, citations: result.sources, usage: result.usage,
-  }).select('id, role, content, citations, usage, created_at').single());
+  }).select('id, role, content, citations, usage, created_at').single())!;
 
   const u = result.usage;
   const updated = must(await db().from('chat_conversations').update({
     title: conversation.title ?? (question.length > 80 ? `${question.slice(0, 77)}…` : question),
     total_input_tokens: conversation.total_input_tokens + u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
     total_output_tokens: conversation.total_output_tokens + u.output_tokens,
-  }).eq('id', conversation.id).select(CONVERSATION_COLUMNS).single());
+  }).eq('id', conversation.id).select(CONVERSATION_COLUMNS).single())!;
 
   return c.json({ conversation: updated, messages: [userMsg, assistantMsg] });
 });

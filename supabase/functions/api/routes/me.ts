@@ -145,7 +145,8 @@ router.post('/password', async (c) => {
 
   const { error } = await db().auth.admin.updateUserById(user.id, { password: next });
   if (error) throw badRequest(error.message);
-  return c.json({ ok: true });
+  // Supabase revokes every session of the user on a password change; the UI signs in again with the new password.
+  return c.json({ ok: true, sessions_revoked: true });
 });
 
 export default router;

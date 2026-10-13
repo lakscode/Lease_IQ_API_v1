@@ -306,7 +306,7 @@ export function parseRentRoll(text: string, override?: ColumnMapping | null): Pa
   const body = rows.slice(header_row + 1);
   // Charge columns: unmapped columns whose non-empty values are mostly numbers.
   const charge_columns = headers.filter((h) => {
-    if (mappedHeaders.has(h) || /^Column \d+$/.test(h)) return false;
+    if (mappedHeaders.has(h) || /^Column \d+$/.test(h) || /market/i.test(h)) return false;
     const values = body.map((r) => r[idx(h)] ?? '').filter((v) => v !== '');
     if (!values.length) return false;
     const numeric = values.filter((v) => parseMoney(v) !== null && parseDate(v) === null && /^[\s$€£(\-–]*[\d.,\s]+[)\s€£-]*$/.test(v)).length;
