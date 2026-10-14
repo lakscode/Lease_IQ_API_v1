@@ -1,7 +1,7 @@
 // Outgoing email (invitations, reports, CSV exports). SendGrid when configured; otherwise callers
 // fall back (e.g. invites return a copyable link). Supabase Auth sends its own account emails.
 import { env } from './env.ts';
-import { getSetting, SETTINGS } from './settings.ts';
+import { getSecret, getSetting, SECRETS, SETTINGS } from './settings.ts';
 import { ApiError } from './http.ts';
 
 export interface EmailSettings {
@@ -20,9 +20,22 @@ export async function getEmailSettings(): Promise<EmailSettings> {
   return { ...DEFAULT_EMAIL_SETTINGS, ...(await getSetting<Partial<EmailSettings>>(SETTINGS.email, {})) };
 }
 
+/** SendGrid key: the one saved in Settings wins over the SENDGRID_API_KEY environment variable. */
+export async function sendgridKey(): Promise<{ key: string; source: 'settings' | 'environment' } | null> {
+  const saved = await getSecret(SECRETS.sendgridApiKey);
+  if (saved) return { key: saved, source: 'settings' };
+  return env.sendgridApiKey ? { key: env.sendgridApiKey, source: 'environment' } : null;
+}
+
+/** What the admin UI may know about the key: where it comes from and its last 4 characters. */
+export async function sendgridKeyStatus(): Promise<{ sendgrid_key_set: boolean; sendgrid_key_source: 'settings' | 'environment' | null; sendgrid_key_hint: string | null }> {
+  const k = await sendgridKey();
+  return { sendgrid_key_set: Boolean(k), sendgrid_key_source: k?.source ?? null, sendgrid_key_hint: k ? k.key.slice(-4) : null };
+}
+
 export async function emailConfigured(): Promise<boolean> {
   const settings = await getEmailSettings();
-  return settings.provider === 'sendgrid' && Boolean(env.sendgridApiKey) && Boolean(settings.from_email);
+  return settings.provider === 'sendgrid' && Boolean(await sendgridKey()) && Boolean(settings.from_email);
 }
 
 export interface EmailAttachment {
@@ -44,9 +57,10 @@ export async function sendEmail(msg: {
   if (!(await emailConfigured())) {
     throw new ApiError('email_not_configured', 'Email is not configured. A super admin can set up SendGrid in Settings.');
   }
+  const apiKey = (await sendgridKey())!.key;
   const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${env.sendgridApiKey}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       personalizations: [{ to: msg.to.map((email) => ({ email })) }],
       from: { email: settings.from_email, name: settings.from_name || 'Lease IQ' },

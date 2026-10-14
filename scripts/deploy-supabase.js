@@ -4,7 +4,7 @@
 // Function settings come from API/.env:
 //   FUNCTION_CORS_ORIGIN  deployed UI origin(s), comma-separated (falls back to CORS_ORIGIN)
 //   FUNCTION_APP_URL      public UI URL used in invitation/email links (falls back to APP_URL, then the first origin)
-//   ANTHROPIC_API_KEY, SENDGRID_API_KEY, JIRA_*  copied when set
+//   ANTHROPIC_API_KEY, SENDGRID_API_KEY, LOGS_API_TOKEN, JIRA_*  copied when set
 // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are provided to functions by Supabase automatically.
 import 'dotenv/config';
 import { execFileSync } from 'node:child_process';
@@ -28,7 +28,7 @@ const secrets = {
   STORAGE_BUCKET: process.env.SUPABASE_STORAGE_BUCKET || 'leases',
   MAX_UPLOAD_MB: process.env.MAX_UPLOAD_MB || '50',
 };
-for (const key of ['ANTHROPIC_API_KEY', 'SENDGRID_API_KEY', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY', 'JIRA_ISSUE_TYPES']) {
+for (const key of ['ANTHROPIC_API_KEY', 'SENDGRID_API_KEY', 'LOGS_API_TOKEN', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY', 'JIRA_ISSUE_TYPES']) {
   if (process.env[key]) secrets[key] = process.env[key];
 }
 

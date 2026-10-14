@@ -24,3 +24,28 @@ export async function setSetting(key: string, value: unknown, userId: string | n
   if (error) throw new Error(error.message);
   cache.delete(key);
 }
+
+// app_secrets keys (service-role only; never returned to the browser)
+export const SECRETS = {
+  sendgridApiKey: 'sendgrid_api_key',
+} as const;
+
+const secretCache = new Map<string, { value: string | null; at: number }>();
+
+export async function getSecret(key: string): Promise<string | null> {
+  const hit = secretCache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
+  const { data } = await db().from('app_secrets').select('value').eq('key', key).maybeSingle();
+  const value = data?.value || null;
+  secretCache.set(key, { value, at: Date.now() });
+  return value;
+}
+
+/** Store a secret, or remove it when value is null. */
+export async function setSecret(key: string, value: string | null, userId: string | null): Promise<void> {
+  const { error } = value === null
+    ? await db().from('app_secrets').delete().eq('key', key)
+    : await db().from('app_secrets').upsert({ key, value, updated_by: userId, updated_at: new Date().toISOString() });
+  if (error) throw new Error(error.message);
+  secretCache.delete(key);
+}

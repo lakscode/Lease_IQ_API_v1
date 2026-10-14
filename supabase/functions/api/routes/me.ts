@@ -4,7 +4,8 @@ import type { AppEnv, Locale, Profile, Role } from '../lib/types.ts';
 import { anonClient, db } from '../lib/supabase.ts';
 import { publicLogoUrl } from '../lib/storage.ts';
 import { ApiError, badRequest, readJson } from '../lib/http.ts';
-import { applyDomainJoin } from '../lib/account-domains.ts';
+import { applyDomainJoin, provisionOrgIfNone } from '../lib/account-domains.ts';
+import { logError } from '../lib/error-log.ts';
 
 const router = new Hono<AppEnv>();
 
@@ -64,6 +65,15 @@ router.get('/', async (c) => {
     if (joined && !profile.default_org_id) profile = { ...profile, default_org_id: joined };
   } catch (err) {
     console.error('domain join failed:', (err as Error).message);
+  }
+  // No organization yet: create one from the email domain (idempotent; never blocks sign-in).
+  if (!profile.is_super_admin) {
+    try {
+      const created = await provisionOrgIfNone(user);
+      if (created && !profile.default_org_id) profile = { ...profile, default_org_id: created };
+    } catch (err) {
+      await logError({ source: 'api', area: 'signup.auto_org', message: (err as Error).message, userId: user.id, email: user.email ?? null, path: '/api/me' });
+    }
   }
   const orgs = await myOrgs(user.id, profile.is_super_admin);
   const memberOrgs = orgs.filter((o) => !o.via_super_admin);

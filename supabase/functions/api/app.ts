@@ -24,9 +24,11 @@ import dashboard from './routes/dashboard.ts';
 import portfolio from './routes/portfolio.ts';
 import reports from './routes/reports.ts';
 import imports from './routes/imports.ts';
+import clientErrors from './routes/client-errors.ts';
+import logs from './routes/logs.ts';
 
 /** Paths (relative to /api) that don't require a signed-in user. */
-const PUBLIC_PATHS = [/^\/?$/, /^\/health$/, /^\/status$/, /^\/config$/, /^\/invites\/preview\//];
+const PUBLIC_PATHS = [/^\/?$/, /^\/health$/, /^\/status$/, /^\/config$/, /^\/invites\/preview\//, /^\/client-errors$/, /^\/logs$/];
 
 export function createApp() {
   const api = new Hono<AppEnv>();
@@ -54,6 +56,8 @@ export function createApp() {
   api.route('/portfolio', portfolio);
   api.route('/reports', reports);
   api.route('/imports', imports);
+  api.route('/client-errors', clientErrors);
+  api.route('/logs', logs);         // checks its own auth (super admin or LOGS_API_TOKEN)
 
   const app = new Hono<AppEnv>();
   app.use(

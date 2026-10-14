@@ -41,6 +41,7 @@ export function kindOf(category: string): 'revenue' | 'risk' {
   return (OPPORTUNITY_CATEGORIES.revenue as readonly string[]).includes(category) ? 'revenue' : 'risk';
 }
 
+// Structured outputs allow at most 16 nullable (union-typed) properties per schema; keep this one under that.
 const n = (d?: string) => s.nullable(s.number(d));
 
 const INSIGHTS_SCHEMA = s.object({
@@ -65,7 +66,7 @@ const INSIGHTS_SCHEMA = s.object({
     rent_psf: n('Annual rent per rentable sq ft'),
     abatement: s.boolean('True if rent is abated / free in this period'),
     abatement_pct: n('Percent of rent abated (100 = free rent)'),
-    note: s.nullable(s.string()),
+    note: s.string('Empty string if none'),
   }), 'Base rent schedule over the whole term as amended, in date order, without gaps. Split abatement periods out.'),
   cam_terms: s.object({
     pro_rata_share: n('Tenant pro-rata share, percent'),
@@ -75,7 +76,7 @@ const INSIGHTS_SCHEMA = s.object({
     cap_cumulative: s.nullable(s.boolean()),
     cap_controllable_only: s.nullable(s.boolean()),
     base_year: s.nullable(s.integer()),
-    notes: s.nullable(s.string('Other CAM / operating expense terms')),
+    notes: s.string('Other CAM / operating expense terms; empty string if none'),
   }),
 });
 

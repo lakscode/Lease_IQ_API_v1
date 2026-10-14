@@ -1,7 +1,7 @@
 // Join-by-email-domain: a super admin claims a company domain for an organization; people who sign in
 // with a verified Google or Microsoft account on that domain join automatically (see GET /api/me).
 import type { User } from '@supabase/supabase-js';
-import { db } from './supabase.ts';
+import { db, must } from './supabase.ts';
 import { badRequest } from './http.ts';
 import { addMember } from './account-members.ts';
 import type { Role } from './types.ts';
@@ -82,6 +82,69 @@ export async function applyDomainJoin(user: User): Promise<string | null> {
   if (await isRemoved(row.org_id, user.email)) return null;
   const result = await addMember(row.org_id, user.id, row.default_role, user.email);
   return result === 'added' ? row.org_id : null;
+}
+
+/**
+ * Self-serve onboarding (GET /api/me, after applyDomainJoin): a user with a confirmed email who belongs to no
+ * organization gets one named after their email domain, as admin, and the domain is claimed for it so colleagues
+ * signing in with Google/Microsoft join it. Public mailbox domains (gmail.com …) get an organization without a claim.
+ * Skipped when the domain is already claimed (that org decides, via domain join or invite) or when the person was
+ * removed from an organization before. Relies on Supabase email confirmation being on for password sign-ups.
+ * Returns the new org id, if one was created or joined.
+ */
+const provisioning = new Map<string, Promise<string | null>>();
+
+export function provisionOrgIfNone(user: User): Promise<string | null> {
+  // Parallel /me calls for the same user (e.g. React StrictMode) share one run.
+  const running = provisioning.get(user.id);
+  if (running) return running;
+  const run = provision(user).finally(() => provisioning.delete(user.id));
+  provisioning.set(user.id, run);
+  return run;
+}
+
+async function provision(user: User): Promise<string | null> {
+  if (!user.email || !user.email_confirmed_at) return null;
+  const email = user.email.toLowerCase();
+  const domain = emailDomain(email);
+  if (!domain) return null;
+
+  const { count } = await db().from('org_members').select('org_id', { count: 'exact', head: true }).eq('user_id', user.id);
+  if (count) return null;
+  const { data: removed } = await db().from('org_member_removals').select('org_id').eq('email', email).limit(1);
+  if (removed?.length) return null;
+
+  const claimDomain = !PUBLIC_DOMAINS.has(domain) && DOMAIN_RE.test(domain);
+  if (claimDomain) {
+    const { data: claimed } = await db().from('org_domains').select('id').eq('domain', domain).maybeSingle();
+    if (claimed) return null;
+  }
+
+  const org = must(
+    await db().from('organizations').insert({ name: claimDomain ? domain : email, created_by: user.id }).select('id').single(),
+    'create organization',
+  ) as { id: string };
+
+  if (claimDomain) {
+    // Signed up with Microsoft: only accounts from the same Entra tenant may join by domain.
+    const tenant = msTenantIds(user)[0] ?? null;
+    const { error } = await db().from('org_domains').insert({ org_id: org.id, domain, default_role: 'viewer', ms_tenant_id: tenant, created_by: user.id });
+    if (error) {
+      // Claimed at the same moment (by this user on another instance, or a colleague): drop ours.
+      await db().from('organizations').delete().eq('id', org.id);
+      if (error.code !== '23505') throw new Error(`claim domain: ${error.message}`);
+      const { data: winner } = await db().from('org_domains').select('org_id, org:organizations(created_by)').eq('domain', domain).maybeSingle();
+      const createdBy = (winner?.org as unknown as { created_by: string | null } | null)?.created_by;
+      if (winner && createdBy === user.id) {
+        await addMember(winner.org_id as string, user.id, 'admin', email);
+        return winner.org_id as string;
+      }
+      return applyDomainJoin(user);
+    }
+  }
+
+  await addMember(org.id, user.id, 'admin', email);
+  return org.id;
 }
 
 /**

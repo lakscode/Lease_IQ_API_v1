@@ -430,6 +430,9 @@ try {
   for (const id of created.users) await svc.auth.admin.deleteUser(id).catch(() => undefined);
   for (const id of created.orgs) { await svc.from('leases').delete().eq('org_id', id); await svc.from('organizations').delete().eq('id', id); }
   await svc.from('organizations').delete().ilike('name', 'acct-test-org-%');
+  // Organizations auto-created on first sign-in for test users (named after the email domain; claims cascade).
+  await svc.from('organizations').delete().in('name', ['leaseiq.test', TEST_DOMAIN]);
+  await svc.from('organizations').delete().ilike('name', 'acct-test-%@leaseiq.test');
   if (demoId) {
     await svc.from('org_invites').delete().eq('org_id', demoId).ilike('email', 'acct-test-%');
     await svc.from('org_member_removals').delete().eq('org_id', demoId).ilike('email', 'acct-test-%');

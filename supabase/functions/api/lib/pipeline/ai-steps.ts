@@ -86,20 +86,28 @@ export async function splitFile(ctx: AiContext, input: DocumentInput, totalPages
 
 // ---- Abstract ----------------------------------------------------------------------------------
 
-function fieldValueSchema(kind: string): Record<string, unknown> {
-  if (kind === 'number' || kind === 'money') return s.nullable(s.number());
-  return s.nullable(s.string());
-}
+// Fields come back as a list of the values the document states rather than an object of nullable entries:
+// structured outputs allow at most 16 union-typed (nullable) properties per schema, and two per field exceeds that.
+// Values are strings; buildAbstract coerces numbers and dates per field kind.
+const EXTRACTED_FIELDS = ABSTRACT_FIELDS.filter((f) => f.key !== 'changes_made');
 
-const FIELDS_SCHEMA = s.object(Object.fromEntries(
-  ABSTRACT_FIELDS.filter((f) => f.key !== 'changes_made').map((f) => [
-    f.key,
-    s.object({
-      value: fieldValueSchema(f.kind),
-      page: s.nullable(s.integer('Page where the value is stated')),
-    }, `${f.label}${f.kind === 'date' ? ' (YYYY-MM-DD)' : ''}${f.kind === 'money' ? ' (number in the lease currency)' : ''}`),
-  ]),
-));
+const FIELD_GUIDE = EXTRACTED_FIELDS.map((f) =>
+  `${f.key}: ${f.label}${f.kind === 'date' ? ' (YYYY-MM-DD)' : ''}${f.kind === 'number' ? ' (plain number)' : ''}${f.kind === 'money' ? ' (plain number in the lease currency)' : ''}`,
+).join('; ');
+
+const FIELDS_SCHEMA = s.array(s.object({
+  key: s.enum(EXTRACTED_FIELDS.map((f) => f.key)),
+  value: s.string(),
+  page: s.integer('Page where the value is stated'),
+}), `One entry per field this document states; omit fields it does not state. Fields: ${FIELD_GUIDE}`);
+
+function fieldsRecord(entries: { key: string; value: string; page: number }[] | undefined): AbstractResult['fields'] {
+  const fields: AbstractResult['fields'] = {};
+  for (const e of entries ?? []) {
+    if (!fields[e.key]) fields[e.key] = { value: e.value, page: e.page ?? null };
+  }
+  return fields;
+}
 
 const SIGNATURE_SCHEMA = s.object({
   status: s.enum(['signed', 'partially_signed', 'unsigned', 'unclear']),
@@ -157,10 +165,10 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
 
   const instruction = [
     `This document was classified as "${info.docType}"${info.title ? ` titled "${info.title}"` : ''}.`,
-    'Extract the lease abstract. For every field give the value stated (or changed) by THIS document and the page; use null when this document does not state it.',
+    'Extract the lease abstract. For each field this document states (or changes), give the value and the page; leave out fields it does not state.',
     isMain
       ? 'For a main lease, state the full original terms.'
-      : 'For an amendment or other later document, only fill fields this document sets or changes (e.g. a new expiration date or new rent); leave the rest null. Describe the changes in changes_made.',
+      : 'For an amendment or other later document, only list fields this document sets or changes (e.g. a new expiration date or new rent). Describe the changes in changes_made.',
     'Compute base_rent_annual = 12 × monthly (or vice versa) when only one is given. renewal_notice_months is the number of months before expiration by which renewal notice must be given.',
     `Classify the document's clauses into the allowed clause types (one entry per clause; skip boilerplate headings). ${PAGE_NOTE}`,
     'Check signatures: look at the likely signature pages (usually the end of the document), including ink signatures on scans, digital signatures and DocuSign or Adobe Sign markers. Report each party with signer and date.',
@@ -169,7 +177,7 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
     linking,
   ].join('\n\n');
 
-  const { data } = await callClaudeJson<AbstractResult>(ctx, {
+  const { data } = await callClaudeJson<Omit<AbstractResult, 'fields'> & { fields: { key: string; value: string; page: number }[] }>(ctx, {
     system:
       'You are an expert commercial lease abstractor. Be precise: values must be supported by the document. Dates as YYYY-MM-DD, money and areas as plain numbers. ' +
       languageInstruction(locale),
@@ -178,7 +186,7 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
     effort: 'high',
     maxTokens: 48000,
   });
-  return data;
+  return { ...data, fields: fieldsRecord(data.fields) };
 }
 
 // ---- Signature re-check -----------------------------------------------------------------------

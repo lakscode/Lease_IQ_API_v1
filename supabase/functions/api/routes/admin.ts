@@ -6,8 +6,8 @@ import { requireSuperAdmin } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
 import { ApiError, badRequest, forbidden, notFound, readJson, str } from '../lib/http.ts';
 import { DEFAULT_MODEL, getModel, SUPPORTED_MODELS } from '../lib/ai.ts';
-import { setSetting, SETTINGS } from '../lib/settings.ts';
-import { emailConfigured, getEmailSettings, renderEmail, sendEmail, type EmailSettings } from '../lib/email.ts';
+import { setSecret, setSetting, SECRETS, SETTINGS } from '../lib/settings.ts';
+import { emailConfigured, getEmailSettings, renderEmail, sendEmail, sendgridKeyStatus, type EmailSettings } from '../lib/email.ts';
 import { env } from '../lib/env.ts';
 import { publicLogoUrl, removePaths } from '../lib/storage.ts';
 import { loadOrg, membersRouter, normalizeEmail, parseRole, removeMembers, addMember } from '../lib/account-members.ts';
@@ -27,7 +27,7 @@ router.get('/settings', async (c) => {
     models: SUPPORTED_MODELS,
     ai_configured: Boolean(env.anthropicApiKey),
     email: await getEmailSettings(),
-    sendgrid_key_set: Boolean(env.sendgridApiKey),
+    ...(await sendgridKeyStatus()),
     email_configured: await emailConfigured(),
   });
 });
@@ -46,9 +46,16 @@ router.put('/settings/email', async (c) => {
   const fromName = (str(body.from_name) ?? 'Lease IQ').slice(0, 100);
   const fromEmail = str(body.from_email)?.toLowerCase() ?? '';
   if (provider === 'sendgrid' && !normalizeEmail(fromEmail)) throw badRequest('A valid sender address is required for SendGrid');
+  // sendgrid_api_key: a new key to save; omitted or empty keeps the saved one. clear_sendgrid_api_key removes it.
+  const apiKey = str(body.sendgrid_api_key)?.trim();
+  if (apiKey && (!apiKey.startsWith('SG.') || apiKey.length > 200 || /\s/.test(apiKey))) {
+    throw badRequest('That does not look like a SendGrid API key (it should start with "SG.")');
+  }
   const value: EmailSettings = { provider, from_name: fromName, from_email: fromEmail };
   await setSetting(SETTINGS.email, value, c.get('user').id);
-  return c.json({ email: value, sendgrid_key_set: Boolean(env.sendgridApiKey), email_configured: await emailConfigured() });
+  if (apiKey) await setSecret(SECRETS.sendgridApiKey, apiKey, c.get('user').id);
+  else if (body.clear_sendgrid_api_key === true) await setSecret(SECRETS.sendgridApiKey, null, c.get('user').id);
+  return c.json({ email: value, ...(await sendgridKeyStatus()), email_configured: await emailConfigured() });
 });
 
 router.post('/settings/email/test', async (c) => {
