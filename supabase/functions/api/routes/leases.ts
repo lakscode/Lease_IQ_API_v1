@@ -289,7 +289,7 @@ router.get('/:id/clauses', async (c) => {
 
 interface ClauseOut {
   id: string; document_id: string; document_title: string | null; doc_type: string | null; clause_type: string;
-  source: 'claude' | 'svm'; confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
+  source: 'claude' | 'svm' | 'gateway'; model: string | null; confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
   page: number | null; paragraph: number | null; line: number | null; text: string | null;
 }
 
@@ -297,7 +297,7 @@ async function groupedClauses(orgId: string, leaseId: string): Promise<{ clause_
   const docs = must(await db().from('documents').select('id, title, doc_type, page_start').eq('org_id', orgId).eq('lease_id', leaseId), 'docs') as { id: string; title: string | null; doc_type: string }[];
   if (!docs.length) return [];
   const rows = must(await db().from('clauses')
-    .select('id, document_id, clause_type, source, confidence, alt_types, section, page, paragraph, line, text')
+    .select('id, document_id, clause_type, source, model, confidence, alt_types, section, page, paragraph, line, text')
     .eq('org_id', orgId).in('document_id', docs.map((d) => d.id)), 'clauses') as Omit<ClauseOut, 'document_title' | 'doc_type'>[];
   const byId = new Map(docs.map((d) => [d.id, d]));
   const order = new Map<string, number>(CLAUSE_TYPES.map((t, i) => [t, i]));

@@ -11,13 +11,14 @@
     "users:create": "node scripts/create-users.js",
     "deploy:supabase": "node scripts/deploy-supabase.js",
     "seed:demo": "node scripts/seed-demo.ts",
-    "svm:train": "python svm/train_svm.py",
+    "svm:train": "node scripts/svm-train.ts",
     "svm:check": "node scripts/svm-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.129.0",
     "@hono/node-server": "2.1.3",
     "@supabase/supabase-js": "2.117.2",
+    "ai": "7.0.126",
     "dotenv": "^16.4.5",
     "hono": "4.13.11",
     "pdf-lib": "1.17.1",

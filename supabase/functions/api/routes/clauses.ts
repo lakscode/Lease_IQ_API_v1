@@ -5,7 +5,7 @@ import { requireRole, withOrg } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
 import { badRequest, notFound, num, readJson, str } from '../lib/http.ts';
 import { abstractClauses, clauseSvmInfo, predictClauses } from '../lib/clause-svm.ts';
-import { classifyDocumentSvm } from '../lib/pipeline/svm-clauses.ts';
+import { classifyDocumentClauses, loadClauseDoc } from '../lib/pipeline/clauses.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', withOrg);
@@ -50,11 +50,14 @@ router.post('/abstract', async (c) => {
   return c.json(await abstractClauses(pages, { minConfidence: minConfidence(body.min_confidence), topK: topK(body.top_k) }));
 });
 
-// POST /api/clauses/documents/:id/classify → run the SVM on a stored document and save its clauses (source 'svm')
+// POST /api/clauses/documents/:id/classify → re-classify a stored document with the organization's classifier
+//   (Claude AI, SVM or Vercel AI Gateway, chosen by super admins) → { document_id, source, count, note? }
 router.post('/documents/:id/classify', requireRole('editor'), async (c) => {
-  const doc = must(await db().from('documents').select('id, lease_id').eq('id', c.req.param('id')).eq('org_id', c.get('orgId')).maybeSingle()) as { id: string; lease_id: string | null } | null;
+  const doc = await loadClauseDoc(c.req.param('id'), c.get('orgId'));
   if (!doc) throw notFound('Document');
-  return c.json({ document_id: doc.id, clauses: await classifyDocumentSvm(c.get('orgId'), doc.id, doc.lease_id) });
+  const profile = c.get('profile');
+  const result = await classifyDocumentClauses(doc, { userId: profile.id, locale: profile.locale, process: 'reanalysis' });
+  return c.json({ document_id: doc.id, ...result });
 });
 
 export default router;

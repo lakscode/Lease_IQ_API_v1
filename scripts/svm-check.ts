@@ -1,4 +1,4 @@
-// Checks the TypeScript SVM port against the Python reference predictions in svm/training_report.json,
+// Checks that the exported model (clause-svm-model.json) reproduces the trainer's reference predictions in svm/training_report.json,
 // then runs a sample lease excerpt through clause abstraction. Usage: npm run svm:check [-- path/to/lease.txt]
 import { readFileSync } from 'node:fs';
 import { abstractClauses, predictClauses } from '../supabase/functions/api/lib/clause-svm.ts';
@@ -13,10 +13,10 @@ samples.forEach((s, i) => {
   const p = preds[i];
   if (p.clause_id !== s.id || Math.abs(p.confidence - s.confidence) > 0.002) {
     mismatches++;
-    console.log(`MISMATCH #${i}: python ${s.id} ${s.confidence} vs ts ${p.clause_id} ${p.confidence}`);
+    console.log(`MISMATCH #${i}: trainer ${s.id} ${s.confidence} vs ts ${p.clause_id} ${p.confidence}`);
   }
 });
-console.log(`parity: ${samples.length - mismatches}/${samples.length} match the Python model`);
+console.log(`parity: ${samples.length - mismatches}/${samples.length} match the trainer's reference predictions`);
 
 const SAMPLE = `ARTICLE 3
 BASE RENT

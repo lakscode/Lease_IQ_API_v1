@@ -121,7 +121,8 @@ const SIGNATURE_SCHEMA = s.object({
   notes: s.nullable(s.string()),
 });
 
-const CLAUSE_SCHEMA = s.object({
+/** One classified clause (CLAUSE_TYPES); shared with the Vercel AI Gateway classifier. */
+export const CLAUSE_SCHEMA = s.object({
   clause_type: s.enum(CLAUSE_TYPES),
   confidence: s.number('0 to 1'),
   alternatives: s.array(s.object({ type: s.enum(CLAUSE_TYPES), confidence: s.number() }), 'Up to 3 other likely types when uncertain (confidence < 0.85); otherwise empty'),
@@ -132,12 +133,13 @@ const CLAUSE_SCHEMA = s.object({
   excerpt: s.string('Short verbatim excerpt (max ~300 characters)'),
 });
 
-const ABSTRACT_SCHEMA = s.object({
+/** Abstract output; clauses are only requested when the organization classifies clauses with Claude. */
+const abstractSchema = (withClauses: boolean) => s.object({
   fields: FIELDS_SCHEMA,
   summary: s.nullable(s.string('3–6 sentence plain-language summary')),
   changes_made: s.nullable(s.string('For amendments/addenda/letters: what this document changes. Null for a main lease.')),
   effective_date: s.nullable(s.string('YYYY-MM-DD')),
-  clauses: s.array(CLAUSE_SCHEMA),
+  ...(withClauses ? { clauses: s.array(CLAUSE_SCHEMA) } : {}),
   signature: SIGNATURE_SCHEMA,
   link: s.object({
     kind: s.enum(['new_lease', 'same_file', 'existing_lease']),
@@ -153,10 +155,13 @@ export interface AbstractContext {
   siblings: { index: number; doc_type: string; title: string | null; page_start: number; page_end: number }[];
   candidates: { id: string; tenant_name: string | null; landlord_name: string | null; premises_address: string | null; commencement_date: string | null; expiration_date: string | null }[];
   targetLeaseId: string | null;
+  /** False when the organization's clause classifier is not Claude (clauses are classified separately). */
+  classifyClauses?: boolean;
 }
 
 export async function abstractDocument(ctx: AiContext, input: DocumentInput, info: AbstractContext, locale: Locale): Promise<AbstractResult> {
   const isMain = info.docType === 'main_lease';
+  const withClauses = info.classifyClauses !== false;
   const linking = [
     `Other documents in the same uploaded file: ${info.siblings.length ? JSON.stringify(info.siblings) : 'none'}.`,
     `Existing leases in this organization: ${info.candidates.length ? JSON.stringify(info.candidates) : 'none'}.`,
@@ -170,23 +175,23 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
       ? 'For a main lease, state the full original terms.'
       : 'For an amendment or other later document, only list fields this document sets or changes (e.g. a new expiration date or new rent). Describe the changes in changes_made.',
     'Compute base_rent_annual = 12 × monthly (or vice versa) when only one is given. renewal_notice_months is the number of months before expiration by which renewal notice must be given.',
-    `Classify the document's clauses into the allowed clause types (one entry per clause; skip boilerplate headings). ${PAGE_NOTE}`,
+    withClauses ? `Classify the document's clauses into the allowed clause types (one entry per clause; skip boilerplate headings). ${PAGE_NOTE}` : '',
     'Check signatures: look at the likely signature pages (usually the end of the document), including ink signatures on scans, digital signatures and DocuSign or Adobe Sign markers. Report each party with signer and date.',
     'Linking: say which lease family this document belongs to. A main lease is normally a new_lease unless it is clearly the missing main lease of an existing lease. ' +
       'An amendment belongs to its main lease: same_file (give document_index) when that main lease is in this file, existing_lease (give lease_id) when it matches an existing lease by tenant, landlord and premises, otherwise new_lease.',
     linking,
-  ].join('\n\n');
+  ].filter(Boolean).join('\n\n');
 
   const { data } = await callClaudeJson<Omit<AbstractResult, 'fields'> & { fields: { key: string; value: string; page: number }[] }>(ctx, {
     system:
       'You are an expert commercial lease abstractor. Be precise: values must be supported by the document. Dates as YYYY-MM-DD, money and areas as plain numbers. ' +
       languageInstruction(locale),
     messages: [{ role: 'user', content: inputBlocks(input, instruction) }],
-    jsonSchema: ABSTRACT_SCHEMA,
+    jsonSchema: abstractSchema(withClauses),
     effort: 'high',
     maxTokens: 48000,
   });
-  return { ...data, fields: fieldsRecord(data.fields) };
+  return { ...data, clauses: data.clauses ?? [], fields: fieldsRecord(data.fields) };
 }
 
 // ---- Signature re-check -----------------------------------------------------------------------

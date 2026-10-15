@@ -289,10 +289,10 @@ export function signatureRecord(sig: SignatureResult | null | undefined): Record
   };
 }
 
-/** Which classifier produced a clause: Claude AI (CLAUSE_TYPES) or the local SVM (lease_clauses.json names). */
-export type ClauseSource = 'claude' | 'svm';
+/** Which classifier produced a clause: Claude AI or a Vercel AI Gateway model (CLAUSE_TYPES), or the local SVM (lease_clauses.json names). */
+export type ClauseSource = 'claude' | 'svm' | 'gateway';
 
-export function clauseRows(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude') {
+export function clauseRows(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude', model: string | null = null) {
   const known = (type: string) => source === 'svm' || CLAUSE_SET.has(type);
   return clauses
     .filter((c) => c && c.clause_type)
@@ -301,6 +301,7 @@ export function clauseRows(orgId: string, documentId: string, leaseId: string | 
       document_id: documentId,
       lease_id: leaseId,
       source,
+      model,
       clause_type: known(c.clause_type) ? c.clause_type : 'Miscellaneous',
       confidence: Number.isFinite(Number(c.confidence)) ? Math.max(0, Math.min(1, Number(c.confidence))) : null,
       alt_types: (c.alternatives ?? []).filter((a) => known(a.type) && a.type !== c.clause_type).slice(0, 3)
@@ -313,10 +314,10 @@ export function clauseRows(orgId: string, documentId: string, leaseId: string | 
     }));
 }
 
-/** Replace a document's clauses from one source (the other source's clauses are kept). */
-export async function replaceClauses(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude'): Promise<number> {
-  must(await db().from('clauses').delete().eq('document_id', documentId).eq('source', source), 'delete clauses');
-  const rows = clauseRows(orgId, documentId, leaseId, clauses, source);
+/** Replace all of a document's clauses with the output of one classifier. */
+export async function replaceClauses(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude', model: string | null = null): Promise<number> {
+  must(await db().from('clauses').delete().eq('document_id', documentId), 'delete clauses');
+  const rows = clauseRows(orgId, documentId, leaseId, clauses, source, model);
   for (let i = 0; i < rows.length; i += 200) must(await db().from('clauses').insert(rows.slice(i, i + 200)), 'insert clauses');
   return rows.length;
 }
@@ -338,8 +339,8 @@ export function buildAbstract(fields: AbstractResult['fields'], changesMade: str
   return abstract;
 }
 
-/** Store an abstract result on its document and link it to a lease. */
-export async function applyAbstract(file: LeaseFileRow, doc: SplitDocument, result: AbstractResult, leaseId: string): Promise<{ clauses: number }> {
+/** Store an abstract result on its document and link it to a lease. Clauses are stored by pipeline/clauses.ts. */
+export async function applyAbstract(doc: SplitDocument, result: AbstractResult, leaseId: string): Promise<void> {
   if (!doc.document_id) throw new Error(`Document ${doc.index} was not saved`);
   const changes = doc.doc_type === 'main_lease' ? null : (result.changes_made?.trim() || null);
   const update: Record<string, unknown> = {
@@ -352,8 +353,6 @@ export async function applyAbstract(file: LeaseFileRow, doc: SplitDocument, resu
   const eff = validDate(result.effective_date);
   if (!doc.effective_date && eff) update.effective_date = eff;
   must(await db().from('documents').update(update).eq('id', doc.document_id), 'save abstract');
-  const clauses = await replaceClauses(file.org_id, doc.document_id, leaseId, result.clauses ?? []);
-  return { clauses };
 }
 
 /** Previous document → lease mapping of a file (taken before a re-analysis). */

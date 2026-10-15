@@ -1,4 +1,4 @@
-// Super admin settings: AI model, email provider, users, organizations, email domains.
+// Super admin settings: AI model, email provider, users, organizations (incl. clause classifier), email domains.
 import { Hono, type Context } from 'hono';
 import type { User } from '@supabase/supabase-js';
 import type { AppEnv, Role } from '../lib/types.ts';
@@ -14,6 +14,9 @@ import { loadOrg, membersRouter, normalizeEmail, parseRole, removeMembers, addMe
 import { CURRENCIES, orgDataCounts } from '../lib/account-orgs.ts';
 import { applyDomainToExistingUsers, claimableDomain } from '../lib/account-domains.ts';
 import { signInProviders } from './me.ts';
+import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels } from '../lib/ai-gateway.ts';
+import { clauseSvmInfo } from '../lib/clause-svm.ts';
+import { CLAUSE_CLASSIFIERS, type ClauseClassifier } from '../lib/pipeline/clauses.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', requireSuperAdmin);
@@ -247,17 +250,42 @@ router.delete('/users/:id', async (c) => {
   return c.json({ deleted: true });
 });
 
+// ---- Clause classifiers (per organization) ---------------------------------------------------
+
+// GET /api/admin/clause-classifiers → what each classifier needs and whether it is available
+router.get('/clause-classifiers', async (c) => {
+  const svm = await clauseSvmInfo();
+  return c.json({
+    classifiers: CLAUSE_CLASSIFIERS,
+    claude: { configured: Boolean(env.anthropicApiKey), model: await getModel() },
+    svm: { configured: true, trained_at: svm.trained_at, clause_types: svm.clause_types.length },
+    gateway: { configured: gatewayConfigured(), models: await gatewayModels() },
+  });
+});
+
+/** Validate clause_classifier / clause_model from a request body (only the keys present). */
+function classifierUpdate(body: Record<string, unknown>, current?: { clause_classifier: string; clause_model: string | null }): Record<string, string | null> {
+  if (!('clause_classifier' in body) && !('clause_model' in body)) return {};
+  const classifier = (str(body.clause_classifier) ?? current?.clause_classifier ?? 'claude') as ClauseClassifier;
+  if (!CLAUSE_CLASSIFIERS.includes(classifier)) throw badRequest('Clause classifier must be claude, svm or gateway');
+  if (classifier !== 'gateway') return { clause_classifier: classifier, clause_model: null };
+  const model = 'clause_model' in body ? str(body.clause_model) : current?.clause_model ?? null;
+  if (!model || !GATEWAY_MODEL_RE.test(model)) throw badRequest('Choose a Vercel AI Gateway model, e.g. "openai/gpt-5"');
+  return { clause_classifier: classifier, clause_model: model.slice(0, 120) };
+}
+
 // ---- Organizations ---------------------------------------------------------------------------
 
 router.get('/orgs', async (c) => {
-  const orgs = must(await db().from('organizations').select('id, name, currency, logo_path, created_at').order('name')) as
-    { id: string; name: string; currency: string; logo_path: string | null; created_at: string }[];
+  const orgs = must(await db().from('organizations').select('id, name, currency, logo_path, created_at, clause_classifier, clause_model').order('name')) as
+    { id: string; name: string; currency: string; logo_path: string | null; created_at: string; clause_classifier: string; clause_model: string | null }[];
   const { data: domains } = await db().from('org_domains').select('org_id, domain');
   const countOf = async (table: string, orgId: string) =>
     (await db().from(table).select('*', { count: 'exact', head: true }).eq('org_id', orgId)).count ?? 0;
   return c.json(
     await Promise.all(orgs.map(async (o) => ({
       id: o.id, name: o.name, currency: o.currency, logo_url: publicLogoUrl(o.logo_path), created_at: o.created_at,
+      clause_classifier: o.clause_classifier, clause_model: o.clause_model,
       member_count: await countOf('org_members', o.id),
       lease_count: await countOf('leases', o.id),
       file_count: await countOf('lease_files', o.id),
@@ -273,7 +301,8 @@ router.post('/orgs', async (c) => {
   if (!name) throw badRequest('Organization name is required');
   const currency = (str(body.currency) ?? 'USD').toUpperCase();
   if (!CURRENCIES.includes(currency)) throw badRequest('Unsupported currency');
-  const org = must(await db().from('organizations').insert({ name: name.slice(0, 120), currency, created_by: c.get('user').id }).select('id, name, currency').single()) as { id: string; name: string; currency: string };
+  const org = must(await db().from('organizations').insert({ name: name.slice(0, 120), currency, created_by: c.get('user').id, ...classifierUpdate(body) })
+    .select('id, name, currency, clause_classifier, clause_model').single()) as { id: string; name: string; currency: string };
   if (body.add_me === true) await addMember(org.id, c.get('user').id, 'admin', c.get('user').email ?? null);
   return c.json(org, 201);
 });
@@ -282,7 +311,8 @@ router.patch('/orgs/:id', async (c) => {
   const id = c.req.param('id');
   await loadOrg(id);
   const body = await readJson(c);
-  const update: Record<string, string> = {};
+  const current = must(await db().from('organizations').select('clause_classifier, clause_model').eq('id', id).single()) as { clause_classifier: string; clause_model: string | null };
+  const update: Record<string, string | null> = { ...classifierUpdate(body, current) };
   if ('name' in body) {
     const name = str(body.name);
     if (!name) throw badRequest('Organization name is required');
@@ -294,7 +324,7 @@ router.patch('/orgs/:id', async (c) => {
     update.currency = currency;
   }
   if (!Object.keys(update).length) throw badRequest('Nothing to update');
-  return c.json(must(await db().from('organizations').update(update).eq('id', id).select('id, name, currency').single()));
+  return c.json(must(await db().from('organizations').update(update).eq('id', id).select('id, name, currency, clause_classifier, clause_model').single()));
 });
 
 router.delete('/orgs/:id', async (c) => {

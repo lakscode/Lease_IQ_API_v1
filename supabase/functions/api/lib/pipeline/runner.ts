@@ -19,7 +19,7 @@ import {
   removeFileDocuments, resolveLease, savePageTexts, saveSplit,
 } from './store.ts';
 import type { FileWork, LeaseFileRow, PipelineStep, SplitDocument } from './types.ts';
-import { classifyDocumentSvmSafe } from './svm-clauses.ts';
+import { classifyDocumentClauses, orgClauseClassifier } from './clauses.ts';
 
 /** How long a worker owns a file per step (a crashed worker's lock expires after this). */
 export const LOCK_MS = 7 * 60_000;
@@ -187,25 +187,32 @@ async function stepAbstract(file: LeaseFileRow, name: string, aiImpl: PipelineAi
     .map((d) => ({ index: d.index, doc_type: d.doc_type, title: d.title, page_start: d.page_start, page_end: d.page_end }));
   const candidates = (await leaseCandidates(file.org_id)).map(({ main_document_id: _m, ...rest }) => rest);
   const locale = await uploaderLocale(file.uploaded_by);
+  const { classifier } = await orgClauseClassifier(file.org_id);
   const result = await aiImpl.abstractDocument(
     aiCtx(file, analysisProcess(file), file.target_lease_id),
     input,
-    { docType: doc.doc_type, title: doc.title, siblings, candidates, targetLeaseId: file.target_lease_id },
+    { docType: doc.doc_type, title: doc.title, siblings, candidates, targetLeaseId: file.target_lease_id, classifyClauses: classifier === 'claude' },
     locale,
   );
   return applyAbstractResult(file, doc, result);
 }
 
-/** Link a document to its lease and store the abstract + clauses. Non-AI. */
-export async function applyAbstractResult(file: LeaseFileRow, doc: SplitDocument, result: Parameters<typeof applyAbstract>[2]): Promise<StepOutcome> {
+/**
+ * Link a document to its lease, store the abstract, and classify its clauses with the organization's classifier
+ * (Claude reuses the abstract's clauses; SVM is local; a Vercel AI Gateway model makes its own call).
+ */
+export async function applyAbstractResult(file: LeaseFileRow, doc: SplitDocument, result: Parameters<typeof applyAbstract>[1]): Promise<StepOutcome> {
   const link = await resolveLease(file, file.work, doc, result.link ?? null);
-  const { clauses } = await applyAbstract(file, doc, result, link.leaseId);
-  const svmClauses = doc.document_id ? await classifyDocumentSvmSafe(file.org_id, doc.document_id, link.leaseId) : 0;
+  await applyAbstract(doc, result, link.leaseId);
+  const clauses = await classifyDocumentClauses(
+    { id: doc.document_id!, org_id: file.org_id, lease_id: link.leaseId, file_id: file.id, storage_path: null, page_count: null, title: doc.title },
+    { userId: file.uploaded_by, locale: await uploaderLocale(file.uploaded_by), process: analysisProcess(file), claudeClauses: result.clauses ?? [] },
+  );
   // Keep the lease's terms current as each document lands (finalize recomputes again).
   await recomputeLease(link.leaseId);
   const touched = [...new Set([...(file.work.touched_lease_ids ?? []), link.leaseId])];
   return {
-    detail: `${doc.doc_type} p.${doc.page_start}–${doc.page_end} → lease ${link.leaseId.slice(0, 8)} (${link.reason}${link.created ? ', created' : ''}); ${clauses} clause(s), ${svmClauses} SVM clause(s)`,
+    detail: `${doc.doc_type} p.${doc.page_start}–${doc.page_end} → lease ${link.leaseId.slice(0, 8)} (${link.reason}${link.created ? ', created' : ''}); ${clauses.count} clause(s) by ${clauses.source}${clauses.note ? ` — ${clauses.note}` : ''}`,
     work: { ...file.work, touched_lease_ids: touched },
   };
 }

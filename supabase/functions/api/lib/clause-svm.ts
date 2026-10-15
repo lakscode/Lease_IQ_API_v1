@@ -1,10 +1,44 @@
-// Local clause classifier: TF-IDF + linear SVM trained by API/svm/train_svm.py on API/svm/training_data,
+// Local clause classifier: TF-IDF + linear SVM trained by API/scripts/svm-train.ts on API/svm/training_data,
 // labelled with the clause ids in API/svm/lease_clauses.json. Runs in-process (Node and Edge), no AI key needed.
-// The tokenizer and TF-IDF math must match train_svm.py exactly; retrain to regenerate clause-svm-model.json.
+// The trainer imports termCounts/tfidf from here, so training and prediction share one feature pipeline.
 
-const MODEL_FORMAT = 1;
+export const MODEL_FORMAT = 1;
+/** Lower-case ASCII words of 2+ letters; digits, punctuation and mojibake are separators. */
+export const TOKEN_PATTERN = '[a-z]{2,}';
+export const NGRAM_RANGE: [number, number] = [1, 2];
 
-interface SvmModel {
+/** n-gram counts of a text (unigrams + space-joined bigrams by default). */
+export function termCounts(text: string, pattern = TOKEN_PATTERN, [minN, maxN] = NGRAM_RANGE): Map<string, number> {
+  const tokens = text.toLowerCase().match(new RegExp(pattern, 'g')) ?? [];
+  const counts = new Map<string, number>();
+  for (let n = minN; n <= maxN; n++) {
+    for (let i = 0; i + n <= tokens.length; i++) {
+      const term = n === 1 ? tokens[i] : tokens.slice(i, i + n).join(' ');
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/** Sparse TF-IDF vector: sublinear tf (1 + ln tf) × idf over known terms, L2-normalised. */
+export function tfidf(counts: Map<string, number>, index: Map<string, number>, idf: ArrayLike<number>): { idx: number[]; val: number[] } {
+  const idx: number[] = [];
+  const val: number[] = [];
+  let norm = 0;
+  for (const [term, count] of counts) {
+    const j = index.get(term);
+    if (j === undefined) continue;
+    const v = (1 + Math.log(count)) * idf[j];
+    idx.push(j);
+    val.push(v);
+    norm += v * v;
+  }
+  norm = Math.sqrt(norm) || 1;
+  for (let k = 0; k < val.length; k++) val[k] /= norm;
+  return { idx, val };
+}
+
+export interface SvmModel {
   format: number;
   trained_at: string;
   tokenizer: { pattern: string; lowercase: boolean; ngram_range: [number, number] };
@@ -19,7 +53,6 @@ interface SvmModel {
 
 interface LoadedModel {
   raw: SvmModel;
-  tokenRe: RegExp;
   index: Map<string, number>;
 }
 
@@ -56,35 +89,18 @@ function loadModel(): Promise<LoadedModel> {
   modelPromise ??= import('./clause-svm-model.json', { with: { type: 'json' } }).then(({ default: raw }) => {
     const m = raw as unknown as SvmModel;
     if (m.format !== MODEL_FORMAT) throw new Error(`clause-svm-model.json format ${m.format}, expected ${MODEL_FORMAT}`);
-    return { raw: m, tokenRe: new RegExp(m.tokenizer.pattern, 'g'), index: new Map(m.terms.map((t, i) => [t, i])) };
+    return { raw: m, index: new Map(m.terms.map((t, i) => [t, i])) };
   });
   return modelPromise;
 }
 
 function score(model: LoadedModel, text: string): number[] {
-  const { raw, tokenRe, index } = model;
-  const tokens = (raw.tokenizer.lowercase ? text.toLowerCase() : text).match(tokenRe) ?? [];
-  const [minN, maxN] = raw.tokenizer.ngram_range;
-  const tf = new Map<number, number>();
-  for (let n = minN; n <= maxN; n++) {
-    for (let i = 0; i + n <= tokens.length; i++) {
-      const j = index.get(n === 1 ? tokens[i] : tokens.slice(i, i + n).join(' '));
-      if (j !== undefined) tf.set(j, (tf.get(j) ?? 0) + 1);
-    }
-  }
-  // sublinear tf * idf, then L2-normalise (sklearn TfidfVectorizer(sublinear_tf=True, norm='l2')).
-  const feats: [number, number][] = [];
-  let norm = 0;
-  for (const [j, count] of tf) {
-    const v = (1 + Math.log(count)) * raw.idf[j];
-    feats.push([j, v]);
-    norm += v * v;
-  }
-  norm = Math.sqrt(norm) || 1;
+  const { raw, index } = model;
+  const { idx, val } = tfidf(termCounts(text, raw.tokenizer.pattern, raw.tokenizer.ngram_range), index, raw.idf);
   const scores = raw.intercept.slice();
-  for (const [j, v] of feats) {
-    const w = raw.weights[j];
-    for (let k = 0; k < w.length; k += 2) scores[w[k]] += (v / norm) * w[k + 1];
+  for (let k = 0; k < idx.length; k++) {
+    const w = raw.weights[idx[k]];
+    for (let m = 0; m < w.length; m += 2) scores[w[m]] += val[k] * w[m + 1];
   }
   return scores;
 }

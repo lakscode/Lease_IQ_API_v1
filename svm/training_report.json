@@ -1,5 +1,6 @@
 {
-  "trained_at": "2026-10-15T04:06:01+00:00",
+  "trained_at": "2026-10-15T04:27:38Z",
+  "trainer": "scripts/svm-train.ts",
   "examples": 5412,
   "clause_types": 61,
   "config": {
@@ -9,45 +10,46 @@
     ],
     "min_df": 2,
     "max_features": 15000,
-    "C": 1.0,
+    "C": 1,
     "class_weight": "balanced",
+    "eps": 0.01,
     "prune_below": 0.02
   },
-  "model_nonzero_weights": 270561,
+  "model_nonzero_weights": 270697,
   "cross_validation": {
     "folds": 5,
     "examples": 5405,
-    "accuracy": 0.8426,
-    "macro_f1": 0.7386,
+    "accuracy": 0.8394,
+    "macro_f1": 0.7222,
     "excluded_small_classes": [
       "Contractual Obligation",
       "Sales Reporting and Financials"
     ],
     "calibration": [
       {
-        "min_confidence": 0.0,
-        "coverage": 1.0,
-        "accuracy": 0.8426
+        "min_confidence": 0,
+        "coverage": 1,
+        "accuracy": 0.8394
       },
       {
         "min_confidence": 0.3,
-        "coverage": 0.9254,
-        "accuracy": 0.8786
+        "coverage": 0.928,
+        "accuracy": 0.8768
       },
       {
         "min_confidence": 0.5,
-        "coverage": 0.8633,
-        "accuracy": 0.9036
+        "coverage": 0.8586,
+        "accuracy": 0.903
       },
       {
         "min_confidence": 0.7,
-        "coverage": 0.7856,
-        "accuracy": 0.9263
+        "coverage": 0.7822,
+        "accuracy": 0.9262
       },
       {
         "min_confidence": 0.9,
-        "coverage": 0.6672,
-        "accuracy": 0.9515
+        "coverage": 0.6635,
+        "accuracy": 0.9506
       }
     ]
   },
@@ -66,25 +68,25 @@
       "id": "64217b1a275caef553ece40f",
       "name": "Assignability and Exclusivity",
       "examples": 10,
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0
+      "precision": 0,
+      "recall": 0,
+      "f1-score": 0
     },
     {
       "id": "653b95e68d8833a361063018",
       "name": "Tenant Rights",
       "examples": 20,
-      "precision": 0.167,
-      "recall": 0.05,
-      "f1-score": 0.077
+      "precision": 0,
+      "recall": 0,
+      "f1-score": 0
     },
     {
       "id": "6628d12a8d0255a2cce76154",
       "name": "Ground Lease Restrictions",
       "examples": 12,
-      "precision": 0.5,
+      "precision": 1,
       "recall": 0.083,
-      "f1-score": 0.143
+      "f1-score": 0.154
     },
     {
       "id": "6503fe5c0d9234077df625f3",
@@ -95,44 +97,44 @@
       "f1-score": 0.167
     },
     {
+      "id": "66163264081a1a5f9a884e5f",
+      "name": "Death & Disability",
+      "examples": 10,
+      "precision": 0.5,
+      "recall": 0.2,
+      "f1-score": 0.286
+    },
+    {
       "id": "66163264081a1a5f9a884e63",
       "name": "Exclusive Rights",
       "examples": 18,
-      "precision": 0.5,
-      "recall": 0.444,
-      "f1-score": 0.471
-    },
-    {
-      "id": "64217b1a275caef553ece40d",
-      "name": "Co-Tenancy",
-      "examples": 6,
-      "precision": 0.5,
-      "recall": 0.5,
-      "f1-score": 0.5
+      "precision": 0.313,
+      "recall": 0.278,
+      "f1-score": 0.294
     },
     {
       "id": "5d51128d18b40d3e38ed435a",
       "name": "Audits",
       "examples": 15,
-      "precision": 0.5,
-      "recall": 0.6,
-      "f1-score": 0.545
+      "precision": 0.4,
+      "recall": 0.4,
+      "f1-score": 0.4
+    },
+    {
+      "id": "64217b1a275caef553ece40d",
+      "name": "Co-Tenancy",
+      "examples": 6,
+      "precision": 1,
+      "recall": 0.333,
+      "f1-score": 0.5
     },
     {
       "id": "649e62902b1abbbef844d368",
       "name": "Right of First Refusal",
       "examples": 18,
-      "precision": 0.5,
+      "precision": 0.524,
       "recall": 0.611,
-      "f1-score": 0.55
-    },
-    {
-      "id": "66163264081a1a5f9a884e5f",
-      "name": "Death & Disability",
-      "examples": 10,
-      "precision": 0.625,
-      "recall": 0.5,
-      "f1-score": 0.556
+      "f1-score": 0.564
     },
     {
       "id": "66163264081a1a5f9a884e61",
@@ -146,17 +148,9 @@
       "id": "65029c689b2f3fa65d3a0a79",
       "name": "Common Area Maintanence",
       "examples": 45,
-      "precision": 0.596,
-      "recall": 0.622,
-      "f1-score": 0.609
-    },
-    {
-      "id": "6673bf104b464d4368fbbcfc",
-      "name": "Radius Restriction",
-      "examples": 6,
-      "precision": 0.571,
-      "recall": 0.667,
-      "f1-score": 0.615
+      "precision": 0.569,
+      "recall": 0.644,
+      "f1-score": 0.604
     },
     {
       "id": "649e62902b1abbbef844d367",
@@ -167,140 +161,148 @@
       "f1-score": 0.625
     },
     {
-      "id": "652f68f5446d273dc04408f5",
-      "name": "Right of First Offer",
-      "examples": 14,
-      "precision": 0.643,
-      "recall": 0.643,
-      "f1-score": 0.643
-    },
-    {
-      "id": "6673bf064b464d4368fbbcfa",
-      "name": "Information Technology",
-      "examples": 10,
-      "precision": 0.75,
-      "recall": 0.6,
+      "id": "649e62902b1abbbef844d36a",
+      "name": "Termination Option",
+      "examples": 21,
+      "precision": 0.8,
+      "recall": 0.571,
       "f1-score": 0.667
     },
     {
-      "id": "653b95e68d8833a361063019",
-      "name": "Landlord Rights",
-      "examples": 108,
-      "precision": 0.705,
-      "recall": 0.685,
-      "f1-score": 0.695
+      "id": "6673bf104b464d4368fbbcfc",
+      "name": "Radius Restriction",
+      "examples": 6,
+      "precision": 0.667,
+      "recall": 0.667,
+      "f1-score": 0.667
     },
     {
       "id": "66447de751cf3210d3452f01",
       "name": "Tenant Improvements",
       "examples": 55,
-      "precision": 0.755,
-      "recall": 0.673,
-      "f1-score": 0.712
-    },
-    {
-      "id": "63f37d2c0d2f74adc82f4109",
-      "name": "Alterations",
-      "examples": 114,
-      "precision": 0.757,
-      "recall": 0.684,
-      "f1-score": 0.719
-    },
-    {
-      "id": "64217b1a275caef553ece40b",
-      "name": "Repairs",
-      "examples": 282,
-      "precision": 0.745,
-      "recall": 0.695,
-      "f1-score": 0.719
-    },
-    {
-      "id": "649e62902b1abbbef844d36a",
-      "name": "Termination Option",
-      "examples": 21,
-      "precision": 0.867,
-      "recall": 0.619,
-      "f1-score": 0.722
-    },
-    {
-      "id": "66447de751cf3210d3452f00",
-      "name": "Surrender",
-      "examples": 38,
-      "precision": 0.667,
-      "recall": 0.842,
-      "f1-score": 0.744
-    },
-    {
-      "id": "5d51128d18b40d3e38ed4359",
-      "name": "Termination",
-      "examples": 127,
-      "precision": 0.742,
-      "recall": 0.748,
-      "f1-score": 0.745
-    },
-    {
-      "id": "6673cd08477270077cde1273",
-      "name": "Trade Name",
-      "examples": 12,
-      "precision": 0.75,
-      "recall": 0.75,
-      "f1-score": 0.75
-    },
-    {
-      "id": "649e62902b1abbbef844d369",
-      "name": "Right to Purchase",
-      "examples": 12,
-      "precision": 0.714,
-      "recall": 0.833,
-      "f1-score": 0.769
-    },
-    {
-      "id": "66163264081a1a5f9a884e60",
-      "name": "Additional Rent",
-      "examples": 56,
-      "precision": 0.792,
-      "recall": 0.75,
-      "f1-score": 0.771
-    },
-    {
-      "id": "5d51128d18b40d3e38ed4358",
-      "name": "Lease Term",
-      "examples": 103,
-      "precision": 0.802,
-      "recall": 0.748,
-      "f1-score": 0.774
+      "precision": 0.692,
+      "recall": 0.655,
+      "f1-score": 0.673
     },
     {
       "id": "6673bef74b464d4368fbbcf7",
       "name": "AROE",
       "examples": 9,
-      "precision": 0.778,
+      "precision": 0.636,
       "recall": 0.778,
-      "f1-score": 0.778
+      "f1-score": 0.7
     },
     {
-      "id": "64217b1a275caef553ece40e",
-      "name": "Expansion Rights",
-      "examples": 45,
-      "precision": 0.766,
-      "recall": 0.8,
-      "f1-score": 0.783
+      "id": "6673cd08477270077cde1273",
+      "name": "Trade Name",
+      "examples": 12,
+      "precision": 0.875,
+      "recall": 0.583,
+      "f1-score": 0.7
+    },
+    {
+      "id": "6673bf064b464d4368fbbcfa",
+      "name": "Information Technology",
+      "examples": 10,
+      "precision": 0.857,
+      "recall": 0.6,
+      "f1-score": 0.706
+    },
+    {
+      "id": "653b95e68d8833a361063019",
+      "name": "Landlord Rights",
+      "examples": 108,
+      "precision": 0.745,
+      "recall": 0.676,
+      "f1-score": 0.709
+    },
+    {
+      "id": "64217b1a275caef553ece40b",
+      "name": "Repairs",
+      "examples": 282,
+      "precision": 0.768,
+      "recall": 0.691,
+      "f1-score": 0.728
+    },
+    {
+      "id": "63f37d2c0d2f74adc82f4109",
+      "name": "Alterations",
+      "examples": 114,
+      "precision": 0.743,
+      "recall": 0.737,
+      "f1-score": 0.74
+    },
+    {
+      "id": "5d51128d18b40d3e38ed4359",
+      "name": "Termination",
+      "examples": 127,
+      "precision": 0.729,
+      "recall": 0.764,
+      "f1-score": 0.746
+    },
+    {
+      "id": "66163264081a1a5f9a884e60",
+      "name": "Additional Rent",
+      "examples": 56,
+      "precision": 0.784,
+      "recall": 0.714,
+      "f1-score": 0.748
+    },
+    {
+      "id": "66447de751cf3210d3452f00",
+      "name": "Surrender",
+      "examples": 38,
+      "precision": 0.681,
+      "recall": 0.842,
+      "f1-score": 0.753
+    },
+    {
+      "id": "652f68f5446d273dc04408f5",
+      "name": "Right of First Offer",
+      "examples": 14,
+      "precision": 0.733,
+      "recall": 0.786,
+      "f1-score": 0.759
+    },
+    {
+      "id": "5d51128d18b40d3e38ed4358",
+      "name": "Lease Term",
+      "examples": 103,
+      "precision": 0.798,
+      "recall": 0.767,
+      "f1-score": 0.782
     },
     {
       "id": "64217b1a275caef553ece406",
       "name": "Permitted Uses",
       "examples": 111,
-      "precision": 0.774,
+      "precision": 0.767,
       "recall": 0.802,
-      "f1-score": 0.788
+      "f1-score": 0.784
     },
     {
       "id": "64217b1a275caef553ece405",
       "name": "Leased Premises",
       "examples": 91,
-      "precision": 0.773,
+      "precision": 0.765,
       "recall": 0.824,
-      "f1-score": 0.798
+      "f1-score": 0.794
+    },
+    {
+      "id": "63f37d2c0d2f74adc82f4101",
+      "name": "Base Rent",
+      "examples": 99,
+      "precision": 0.792,
+      "recall": 0.808,
+      "f1-score": 0.8
+    },
+    {
+      "id": "649e62902b1abbbef844d369",
+      "name": "Right to Purchase",
+      "examples": 12,
+      "precision": 0.769,
+      "recall": 0.833,
+      "f1-score": 0.8
     },
     {
       "id": "667514470a5cb33d86ee3793",
@@ -311,19 +313,19 @@
       "f1-score": 0.8
     },
     {
-      "id": "68c115a10a9fcc90b52cf86b",
-      "name": "HVAC",
-      "examples": 195,
-      "precision": 0.787,
-      "recall": 0.815,
-      "f1-score": 0.801
+      "id": "6678ff03a9aefb6552287dac",
+      "name": "Store Operation",
+      "examples": 10,
+      "precision": 0.8,
+      "recall": 0.8,
+      "f1-score": 0.8
     },
     {
-      "id": "68c115d40a9fcc90b52cf86c",
-      "name": "Roof",
-      "examples": 195,
-      "precision": 0.819,
-      "recall": 0.79,
+      "id": "64217b1a275caef553ece40e",
+      "name": "Expansion Rights",
+      "examples": 45,
+      "precision": 0.787,
+      "recall": 0.822,
       "f1-score": 0.804
     },
     {
@@ -335,204 +337,204 @@
       "f1-score": 0.806
     },
     {
-      "id": "64217b1a275caef553ece40c",
-      "name": "Operating Expenses",
-      "examples": 419,
-      "precision": 0.828,
-      "recall": 0.814,
-      "f1-score": 0.821
-    },
-    {
-      "id": "63f37d2c0d2f74adc82f4101",
-      "name": "Base Rent",
-      "examples": 99,
-      "precision": 0.808,
-      "recall": 0.848,
-      "f1-score": 0.828
-    },
-    {
-      "id": "6678ff03a9aefb6552287dac",
-      "name": "Store Operation",
-      "examples": 10,
-      "precision": 0.889,
-      "recall": 0.8,
-      "f1-score": 0.842
-    },
-    {
-      "id": "695f4e01d851e30714c7df61",
-      "name": "Gross Sales/Receipts",
-      "examples": 135,
-      "precision": 0.893,
-      "recall": 0.807,
-      "f1-score": 0.848
-    },
-    {
-      "id": "66163264081a1a5f9a884e62",
-      "name": "Guaranty",
-      "examples": 38,
-      "precision": 0.886,
-      "recall": 0.816,
-      "f1-score": 0.849
-    },
-    {
       "id": "6673cd03477270077cde1272",
       "name": "Landlord Lien",
       "examples": 37,
-      "precision": 0.842,
-      "recall": 0.865,
-      "f1-score": 0.853
+      "precision": 0.811,
+      "recall": 0.811,
+      "f1-score": 0.811
     },
     {
-      "id": "66fa76dc6bf9d16cddb69e49",
-      "name": "Utilities",
-      "examples": 287,
-      "precision": 0.856,
-      "recall": 0.871,
-      "f1-score": 0.864
-    },
-    {
-      "id": "63f37d2c0d2f74adc82f4105",
-      "name": "Subordination",
-      "examples": 68,
-      "precision": 0.857,
-      "recall": 0.882,
-      "f1-score": 0.87
+      "id": "68c115a10a9fcc90b52cf86b",
+      "name": "HVAC",
+      "examples": 195,
+      "precision": 0.794,
+      "recall": 0.831,
+      "f1-score": 0.812
     },
     {
       "id": "6423e1354339dc1e236cd551",
       "name": "Go Dark",
       "examples": 9,
-      "precision": 1.0,
+      "precision": 0.875,
       "recall": 0.778,
-      "f1-score": 0.875
+      "f1-score": 0.824
     },
     {
-      "id": "682ae32ff098740272f11c70",
-      "name": "Percentage Rent",
-      "examples": 81,
-      "precision": 0.86,
-      "recall": 0.914,
-      "f1-score": 0.886
+      "id": "6673d0bcd353dc605d4eb7a5",
+      "name": "Financial Statement",
+      "examples": 7,
+      "precision": 0.7,
+      "recall": 1,
+      "f1-score": 0.824
     },
     {
-      "id": "63f37d2c0d2f74adc82f4103",
-      "name": "Assignment and Subleasing",
-      "examples": 168,
-      "precision": 0.888,
-      "recall": 0.899,
-      "f1-score": 0.893
+      "id": "68c115d40a9fcc90b52cf86c",
+      "name": "Roof",
+      "examples": 195,
+      "precision": 0.84,
+      "recall": 0.81,
+      "f1-score": 0.825
     },
     {
-      "id": "64217b1a275caef553ece408",
-      "name": "Parking Requirements",
-      "examples": 173,
-      "precision": 0.869,
-      "recall": 0.919,
-      "f1-score": 0.893
+      "id": "64217b1a275caef553ece40c",
+      "name": "Operating Expenses",
+      "examples": 419,
+      "precision": 0.831,
+      "recall": 0.823,
+      "f1-score": 0.827
+    },
+    {
+      "id": "66163264081a1a5f9a884e62",
+      "name": "Guaranty",
+      "examples": 38,
+      "precision": 0.821,
+      "recall": 0.842,
+      "f1-score": 0.831
+    },
+    {
+      "id": "695f4e01d851e30714c7df61",
+      "name": "Gross Sales/Receipts",
+      "examples": 135,
+      "precision": 0.891,
+      "recall": 0.785,
+      "f1-score": 0.835
+    },
+    {
+      "id": "63f37d2c0d2f74adc82f4105",
+      "name": "Subordination",
+      "examples": 68,
+      "precision": 0.841,
+      "recall": 0.853,
+      "f1-score": 0.847
+    },
+    {
+      "id": "66fa76dc6bf9d16cddb69e49",
+      "name": "Utilities",
+      "examples": 287,
+      "precision": 0.867,
+      "recall": 0.864,
+      "f1-score": 0.866
     },
     {
       "id": "63f37d2c0d2f74adc82f4107",
       "name": "Renewal",
       "examples": 77,
-      "precision": 0.877,
-      "recall": 0.922,
-      "f1-score": 0.899
+      "precision": 0.852,
+      "recall": 0.896,
+      "f1-score": 0.873
     },
     {
       "id": "64217b1a275caef553ece410",
       "name": "Estoppel",
       "examples": 49,
-      "precision": 0.882,
+      "precision": 0.849,
       "recall": 0.918,
-      "f1-score": 0.9
+      "f1-score": 0.882
+    },
+    {
+      "id": "64217b1a275caef553ece408",
+      "name": "Parking Requirements",
+      "examples": 173,
+      "precision": 0.854,
+      "recall": 0.913,
+      "f1-score": 0.883
+    },
+    {
+      "id": "682ae32ff098740272f11c70",
+      "name": "Percentage Rent",
+      "examples": 81,
+      "precision": 0.844,
+      "recall": 0.938,
+      "f1-score": 0.889
+    },
+    {
+      "id": "63f37d2c0d2f74adc82f4103",
+      "name": "Assignment and Subleasing",
+      "examples": 168,
+      "precision": 0.895,
+      "recall": 0.911,
+      "f1-score": 0.903
     },
     {
       "id": "5d51128d18b40d3e38ed4369",
       "name": "Insurance",
       "examples": 205,
-      "precision": 0.871,
-      "recall": 0.956,
-      "f1-score": 0.912
-    },
-    {
-      "id": "63f37d2c0d2f74adc82f4106",
-      "name": "HoldOver",
-      "examples": 50,
-      "precision": 0.887,
-      "recall": 0.94,
-      "f1-score": 0.913
+      "precision": 0.867,
+      "recall": 0.951,
+      "f1-score": 0.907
     },
     {
       "id": "5d876e970e9a46ad8d7b0307",
       "name": "Taxes",
       "examples": 295,
-      "precision": 0.905,
-      "recall": 0.932,
-      "f1-score": 0.918
+      "precision": 0.901,
+      "recall": 0.925,
+      "f1-score": 0.913
+    },
+    {
+      "id": "63f37d2c0d2f74adc82f4106",
+      "name": "HoldOver",
+      "examples": 50,
+      "precision": 0.873,
+      "recall": 0.96,
+      "f1-score": 0.914
+    },
+    {
+      "id": "63f37d2c0d2f74adc82f4104",
+      "name": "Security Deposit",
+      "examples": 156,
+      "precision": 0.901,
+      "recall": 0.929,
+      "f1-score": 0.915
     },
     {
       "id": "68c116980a9fcc90b52cf86e",
       "name": "Capex",
       "examples": 280,
       "precision": 0.93,
-      "recall": 0.907,
-      "f1-score": 0.919
-    },
-    {
-      "id": "63f37d2c0d2f74adc82f4104",
-      "name": "Security Deposit",
-      "examples": 156,
-      "precision": 0.913,
-      "recall": 0.942,
-      "f1-score": 0.927
-    },
-    {
-      "id": "6673d0bcd353dc605d4eb7a5",
-      "name": "Financial Statement",
-      "examples": 7,
-      "precision": 0.875,
-      "recall": 1.0,
-      "f1-score": 0.933
-    },
-    {
-      "id": "68c116460a9fcc90b52cf86d",
-      "name": "Sustainability",
-      "examples": 155,
-      "precision": 0.919,
-      "recall": 0.948,
-      "f1-score": 0.933
+      "recall": 0.9,
+      "f1-score": 0.915
     },
     {
       "id": "68c01cf286f264baffa51891",
       "name": "Environmental/Hazardous Materials",
       "examples": 149,
-      "precision": 0.901,
-      "recall": 0.98,
-      "f1-score": 0.939
+      "precision": 0.879,
+      "recall": 0.973,
+      "f1-score": 0.924
     },
     {
-      "id": "5d51128d18b40d3e38ed4354",
-      "name": "Agreement Description",
-      "examples": 122,
-      "precision": 0.915,
-      "recall": 0.967,
-      "f1-score": 0.94
+      "id": "68c116460a9fcc90b52cf86d",
+      "name": "Sustainability",
+      "examples": 155,
+      "precision": 0.912,
+      "recall": 0.935,
+      "f1-score": 0.924
     },
     {
       "id": "634657eae07375a8a0ea2345",
       "name": "Events of Default",
       "examples": 260,
-      "precision": 0.946,
-      "recall": 0.946,
-      "f1-score": 0.946
+      "precision": 0.921,
+      "recall": 0.938,
+      "f1-score": 0.93
+    },
+    {
+      "id": "5d51128d18b40d3e38ed4354",
+      "name": "Agreement Description",
+      "examples": 122,
+      "precision": 0.929,
+      "recall": 0.967,
+      "f1-score": 0.948
     },
     {
       "id": "6486a4b898f51f4d2555f608",
       "name": "Signage",
       "examples": 239,
-      "precision": 0.951,
-      "recall": 0.971,
-      "f1-score": 0.961
+      "precision": 0.959,
+      "recall": 0.967,
+      "f1-score": 0.963
     }
   ],
   "clauses_without_training_data": {
@@ -633,129 +635,129 @@
   },
   "parity_samples": [
     {
-      "text": "Payment of any fines stated throughout this Agreement shall not prejudice the rights of Licensor to pursue other\nremedies available under this Agreement, at law or in equity.",
-      "id": "64217b1a275caef553ece406",
-      "confidence": 0.9499
+      "text": "12.7 Termination/Expiration. Upon termination or expiration of this Lease, Tenant shall, at Tenant's cost, remove any equipment, improvements or storage facilities utilized in connection with any Hazardous Materials and shall clean up, detoxify, repair and otherwise restore the Premises to a condition free of Hazardous Materials, to the extent the condition is caused by Tenant or any successor or sublessee of Tenant or their respective agents, contractors, employees, licensee or invitees.",
+      "id": "68c01cf286f264baffa51891",
+      "confidence": 0.9968
     },
     {
-      "text": "(v)\nbe expressly subject to all of the covenants, agreements, terms,\nprovisions and conditions of this lease except such as are irrelevant or inapplicable, and except as\notherwise expressly set forth to the contrary in this Section;\n(w)\nbe upon the same terms and conditions as those contained in the\nproposed sublease, or in the Sublease Term Sheet, as the case may be, except such as are\nirrelevant or inapplicable and except as otherwise expressly set forth to the contrary in this\nSection;\n(x)\ngive the sublessee the unqualified and unrestricted right, without\nTenant's permission, to assign such sublease or any interest therein and/or to sublet the\nLeaseback Space or any part or parts of the Leaseback Space and to make any and all changes,\nalterations, decorations, installations and improvements in the space covered by such sublease\nand if the proposed sublease will result in all or substantially all of the Demised Premises being\nsublet, grant Landlord or its designee the option to extend the term of such sublease for the\nbalance of the term of this lease less one (1) day;\n(y) provide that any assignee or further subtenant, of Landlord or its\ndesignee, may, at the election of Landlord, be permitted to make changes, alterations,\ndecorations, installations and improvements in the Leaseback Space or any part thereof and shall\nalso provide in substance that any such changes, alterations, decorations, installations and\nimprovements in the Leaseback Space therein made by any assignee or subtenant of Landlord or\nits designee may be removed, in whole or in part, by such assignee or subtenant, at its option,\nprior to or upon the expiration or other termination of such sublease provided that such assignee\nor subtenant, at its expense, shall repair any damage and injury to that portion of the Leaseback\nSpace so sublet caused by such removal; and\n(z) provide that (A) the parties to such sublease expressly negate any\nintention that any estate created under such sublease be merged with any other estate held by\neither of said parties, (B) any assignment or subletting by Landlord or its designee (as the\nsubtenant) may be for any purpose or purposes that Landlord, in Landlord's uncontrolled\ndiscretion, shall deem suitable or appropriate, (C) Tenant, at Tenant's expense, shall and will at\nall times provide and permit reasonably appropriate means of ingress to and egress from the\nLeaseback Space so sublet by Tenant to Landlord or its designee, (D) Landlord, at Tenant's\nexpense, may make such alterations as may be required or deemed necessary by Landlord to\nphysically separate the Leaseback Space from the balance of the Demised Premises and to\ncomply with any laws and/or requirements of public authorities relating to such separation, and\n(E) at the expiration of the term of such sublease, Tenant will accept the space covered by such\nsublease in its then existing condition, subject to the obligations of the sublessee to make such\nrepairs thereto as may be necessary to preserve the premises demised by such sublease in good\norder and condition.\nIf the date that the proposed sublease was to have commenced has not been fixed, then the term\nof the Takeback Sublease shall commence on the date specified in the Landlord's Option Notice.\n(b) If Landlord exercises Landlord's Option to sublet the Leaseback Space,\nthen:",
-      "id": "63f37d2c0d2f74adc82f4103",
-      "confidence": 0.9988
+      "text": "Lessee may terminate this lease anytime after three (3) years from the commencement of the term upon twelve (12) month's advance written notice to Lessor, provided, however, that Lessee shall pay to Lessor, on or before the effective date of such termination, a sum equal to the Minimum Rent otherwise payable for two (2) Lease Years following said effective date. Upon payment of said compensation, and compliance with sections 6.5(b) or (c), and provided that Lessee has otherwise complied with the provisions of this Lease, Lessee shall not be Liable to Lessor for further cost, expenses or damages.",
+      "id": "5d51128d18b40d3e38ed4359",
+      "confidence": 0.9946
     },
     {
-      "text": "Commencing on the Commencement Date, Tenant shall pay, as additional rent, all amounts of money that Tenant is required to pay to Landlord under this Lease in addition to monthly Base Rent whether or not the same is designated “additional rent.” Tenant shall pay to Landlord all additional rent upon Landlord’s written request or otherwise as provided in this Lease.",
-      "id": "66163264081a1a5f9a884e60",
-      "confidence": 0.9998
-    },
-    {
-      "text": "It shall be a condition precedent to the effectiveness of this Lease that Tenant shall deliver to Landlord, together with Tenantâ€™s execution and delivery of this Lease, the Security Deposit in the form of an irrevocable standby letter of credit (the â€œLetter of Creditâ€) pursuant to the provisions of paragraphs (b)Â and (c)Â below. The Security Deposit shall be held as security for the performance of Tenantâ€™s obligations.Â  The Security Deposit is not an advance payment of Rent or a measure of damages.Â  Landlord may use all or a portion of the Security Deposit to satisfy past-due Rent or to cure any Event of Default by Tenant.Â  If Landlord uses any portion of the Security Deposit, Tenant shall, within five (5)Â days after demand, restore the Security Deposit to its original amount. Landlord may assign the Security Deposit to a successor or transferee that purchases the Property and, following the assignment, Landlord shall have no further liability for the return of the Security Deposit. In the event Landlord or its successor or transferee pays, on behalf of Tenant, any transfer fee required by the issuer of a Letter of Credit in connection with a transfer of the Letter of Credit, Tenant shall reimburse such transfer fee to Landlord, as additional Rent, within fifteen (15) days of Landlordâ€™s invoice therefor.",
-      "id": "63f37d2c0d2f74adc82f4104",
-      "confidence": 1.0
-    },
-    {
-      "text": "b. Roof Warranty. Prior to Licensee’s installation of Licensee’s Telecom Equipment at the Property, Licensor shall provide Licensee with the name of Licensor’s authorized roofing contractor, and Licensee shall coordinate with and otherwise utilize such contractor (at Licensee’ expense at such contractor’s usual and customary rates) as may be reasonably necessary to ensure that Licensee’s Telecom Equipment will not void or limit any warranty or guaranty with respect to the roof of the building on the Property or any other parts of the Property. Licensee shall reimburse Licensor for actual reasonable costs and expenses incurred by Licensor as a result of any such impairment of such warranty or guaranty upon demand therefor and supporting documentation, unless the same shall result from a failure of Licensor or its authorized roofing contractor under this Paragraph 8.b. Licensee’s obligations under this paragraph shall survive the expiration or termination of this Agreement.",
-      "id": "68c115d40a9fcc90b52cf86c",
-      "confidence": 0.9925
-    },
-    {
-      "text": "Capital expenditures relating to asbestos abatement shall be the sole responsibility of Landlord.",
-      "id": "68c116980a9fcc90b52cf86e",
-      "confidence": 0.9998
-    },
-    {
-      "text": "Structural alterations by Lessee, especially remodeling        and incorporation of fixtures and fittings,    installations, as well as putting bars on windows, may  only be carried out with prior written approval by                         Lessor. If approval is granted by Lessor, Lessee shall                         be responsible for obtaining all necessary permits. All                         expenses for structural alterations (including any                         official fees) shall be paid for by Lessee.",
-      "id": "63f37d2c0d2f74adc82f4109",
-      "confidence": 0.9989
-    },
-    {
-      "text": "adhesively affixed flooring), heating and air conditioning equipment and\nfixtures which shall have been made, furnished or installed by or at the\nexpense of either Landlord or Tenant in or upon the Leased Premises, shall\nvest in Landlord upon the installation thereof, and the same shall remain\nupon and be surrendered with the Leased Premises as a part thereof,\nwithout disturbance and without charge.",
-      "id": "66447de751cf3210d3452f01",
-      "confidence": 0.9969
-    },
-    {
-      "text": "HVAC Maintenance By signing this Lease Agreement Tenant shall, at its own cost and expense, enter into a regularly scheduled preventative maintenance/service contract for servicing all heating and air-conditioning systems and equipment servicing the Leased Premises. The maintenance contractor and the contract must be approved by Landlord, which approval shall not be unreasonably withheld. The service contract must include all services suggested by the equipment manufacturer within the operation/maintenance manual and must become effective (and a copy be delivered to Landlord) within thirty (30) days of the effective date of this Lease Agreement. If the Tenant fails to enter into such service contract as required, Landlord shall have the right to do so on Tenant's behalf and Tenant agrees to pay Landlord the cost and expense of same upon demand.",
-      "id": "68c115a10a9fcc90b52cf86b",
-      "confidence": 0.9996
-    },
-    {
-      "text": "Tenant shall bear the cost of required backflow prevention devices.",
-      "id": "66fa76dc6bf9d16cddb69e49",
-      "confidence": 0.8243
-    },
-    {
-      "text": "(f)Â Â Â Â â€œTermâ€: a period of sixty-six (66) full calendar months plus, if the Commencement Date does not fall on the first day of a calendar month, that period from the Commencement Date to the last day of the calendar month in which the Commencement Date falls, beginning on the Commencement Date and expiring at 6 oâ€™clock PM local time on the Expiration Date.",
-      "id": "5d51128d18b40d3e38ed4358",
-      "confidence": 0.9989
-    },
-    {
-      "text": "All monies payable by Tenant to Landlord  under this Lease shall be deemed to be rent.  Beginning on the Commencement  Date, rent shall be paid to Landlord in advance, in monthly installments on  the first day of each calendar month, during the entire term of this Lease,  without deduction, set-off or counterclaim, in lawful money of the United  States at the address of Landlord as set forth in this Lease, or to such  other person or entity or to such other address as Landlord may designate in  writing.  Tenant's obligation to pay all rent due under this Lease shall  survive the expiration or earlier termination of this Lease.  Should  Commencement Date be on a day other than the first day of the month or  terminate on a day other than the last day of the month, the rent for such  partial month shall be pro-rated based on a 365-day year and shall be paid on  Commencement Date.",
-      "id": "63f37d2c0d2f74adc82f4101",
-      "confidence": 0.9997
-    },
-    {
-      "text": "24.36.2 Recycling and Waste Management. Tenant covenants and agrees, at its sole cost and expense: (a) to comply with all present and future laws, orders and regulations of the Federal, State, county, municipal or other governing authorities, departments, commissions, agencies and boards regarding the collection, sorting, separation, and recycling of garbage, trash, rubbish and other refuse (collectively, “trash”); (b) to comply with Landlord’s recycling policy as part of Landlord’s sustainability practices where it may be more stringent than applicable law; (c) to sort and separate its trash and recycling into such categories as are provided by law or Landlord’s sustainability practices; (d) that each separately sorted category of trash and recycling shall be placed in separate receptacles as directed by Landlord; (e) that Landlord reserves the right to refuse to collect or accept from Tenant any waste that is not separated and sorted as required by law, and to require Tenant to arrange for such collection of Tenant’s sole cost and expense, utilizing a contractor satisfactory to Landlord; and (f) that Tenant shall pay all costs, expenses, fines, penalties or damages that may be imposed on Landlord or Tenant by reason of Tenant’s failure to comply with the provisions of this Section.",
-      "id": "68c116460a9fcc90b52cf86d",
-      "confidence": 1.0
-    },
-    {
-      "text": "Tenant agrees that, in such event, Tenant shall reasonably cooperate with Landlord and, to the extent reasonably practicable (and provided the same do not materially and adversely affect Tenant’s business operations in the Premises or increase Tenant’s costs under the Lease by more than a de minimis extent), comply with the Sustainability Practices for the Building including, without limitation, matters addressing operations and maintenance, such as chemical use for cleaning supplies, indoor air quality, energy efficiency, reduction of GHGs, reduction of plastics, water efficiency, water quality, wellness, health safety, recycling programs, composting programs, exterior maintenance programs, transportation and occupant satisfaction surveys, sustainable procurement practices, and systems upgrades.",
-      "id": "68c116460a9fcc90b52cf86d",
-      "confidence": 0.9994
-    },
-    {
-      "text": "(A) If the Annual Minimum Rent, Annual Percentage Rent, additional rent, or any other charge payable by Tenant under this Lease shall be unpaid on the date payment is required by the terms hereof and shall remain so for a period of ten (10) days after Owner gives Tenant notice of such default, or if Tenant fails to perform any of the other terms, conditions, covenants, and obligations of this Lease to be observed and performed by Tenant for more than fifteen (15) days after Owner gives Tenant notice of such default (it being agreed that a default, other than the failure to pay money, which is of such a character that rectification thereof reasonably requires longer than said fifteen [15] day period",
-      "id": "634657eae07375a8a0ea2345",
-      "confidence": 0.9999
-    },
-    {
-      "text": "No interruption or failure of utilities shall result in the termination of this Lease or the abatement of rent. Notwithstanding anything contained herein to the contrary, in the event that such interruption or cessation of utilities results from Landlord’s negligent or willful act or omission continues beyond five (5) business days from the date of such interruption or cessation, then, provided Tenant has delivered Landlord with prompt notice of such interruption, the rent under this Lease will abate, commencing on the fifth (5th) business day the Premises remain untenantable, and continuing until the date on which the utilities are restored and the Premises are again tenantable. No abatement of rentals as hereinabove described will apply in the event such interruption of utilities is the result of Tenant's alterations to the Premises, or any negligent act or omission of Tenant, its agents, employees or contractors, or any cause other than the negligent or willful act or omission of Landlord or its employees, agents or contractors.",
-      "id": "66fa76dc6bf9d16cddb69e49",
-      "confidence": 0.9671
-    },
-    {
-      "text": "Operating Expenses\" shall be determined on an accrual basis for each calendar year by taking into\naccount on a consistent basis all reasonable and customary costs incurred by Landlord in connection with the\noperation, management, maintenance and repair of the Premises, the Building and/or the Property, including\nany \"Common Areas\" (as defined herein) associated with the Building and/or the Property which includes the\nPump Room, whether undertaken by Landlord pursuant to the specific provisions of this Lease or undertaken\nby Landlord in the exercise of its reasonable discretion, including, but not limited to: the costs of water and\nsewer service to the Building and plumbing; Building maintenance and repair; grounds care and landscaping,\nparking lot maintenance and repair; snow removal; painting; lighting for the Building; casualty, liability,\nbusiness interruption insurance, and such other similar insurance obtained by Landlord in order to protect its\nand its mortgagee's interest in the Building; \"property taxes and assessments\" (as hereinafter defined);\naccounting and legal fees; and a reasonable market rate management fee either to itself or to a third party\nmanagement company. Operating Expenses shall also include compensation provided in the form of\nreasonable wages, salaries, and other benefits (including insurance, welfare, retirement, vacation, holiday,\nsick days, and other fringe benefits) for employees of Landlord or Landlord’s agent which are engaged in the\nmaintenance, repair or improvement of the Premises, the Building, and/or the Property together with\nreasonable charges of any independent contractor incurred in connection with maintenance or repair of the\nsame. Any management fee for the Property shall not exceed three percent (3%) of gross rents for the\nProperty. Additionally, Operating Expenses shall include maintenance or repair to the structure, roof or floor\nof the Building; providing, however, the same shall not include any capital improvements to the Building nor\nany repairs made necessary by the negligent or intentional acts of Landlord or any tenant, or such party's\nemployees, agents or licensees. Operating Expenses, however, shall include an annual amount necessary to\namortize the cost of improvements installed to the extent that they are reasonably intended to reduce Operating\nExpenses, and the cost of improvements required by governmental agencies and applicable laws, all amortized\nover the useful life of such improvements for federal income tax purposes.\nOperating Expenses shall not include the costs of tenant improvements, leasing commissions,\ndepreciation, interest, ground rent and administrative costs not specifically incurred in the operation,\nmanagement, maintenance and repair of the Premises, the Property, or the Building. Operating Expenses shall\nalso not include any expense which is charged separately to tenants of the Building or others, or any expense\nto the extent paid or reimbursed from insurance proceeds. If for any period any tenant of the Building is\nprovided with services or utilities more or less than the services or utilities customarily provided for tenants\nof office and/or warehouse space in the Building, and the same is not directly charged to such tenant, Tenant's\nProportionate Share of the Operating Expenses shall be adjusted accordingly so that Tenant shall not pay a\ndisproportionate amount.\nThe term \"property taxes and assessments\" as used in this paragraph shall mean all real and personal\nproperty taxes and assessments and other governmental levies imposed on or with respect to the Property and\nany property of Landlord or Landlord's agents used principally in the operation, management, maintenance or\nrepair of the Property together with any taxes or assessments imposed in substitution of or as a supplement to\nany taxes or assessments previously included within the definition of property taxes and assessments, and\nincluding any costs and fees associated with contesting any such property taxes or assessments, but excluding\nany federal or state income, franchise, estate or inheritance tax.\nThe term \"common areas\" shall mean those areas located within or on the Building and/or the\nProperty which are designed for the common use and benefit of Landlord and all tenants such as, but not\nlimited to: entrances, steps, stairways, sidewalks, curbs, parking facilities, means of ingress and egress, truck\nmaneuvering areas, truck courts, loading docks, drive-in docks, landscaping, irrigation systems and other\nrelated areas as may be designated from time to time by Landlord.",
-      "id": "64217b1a275caef553ece40c",
-      "confidence": 0.9956
-    },
-    {
-      "text": "All assessments and taxes which are not specifically charged to Tenant because of what Tenant has done, which can be paid by Landlord in installments, shall be paid by Landlord in the maximum number of installments permitted by law if requested by Tenant and not included as Operating Expenses except in the year in which the assessment or tax is actually paid.",
-      "id": "66fa76dc6bf9d16cddb69e49",
-      "confidence": 0.6732
-    },
-    {
-      "text": "TENANT'S REPAIRS. Tenant shall, at its sole cost and expense, keep and maintain all parts of the Premises (except those listed as Landlord's responsibility in section 10 above) in good and sanitary condition, promptly making all necessary repairs and replacements, including but not limited to, windows, glass and plate glass, doors, skylights, any special store front or office entry, interior walls and finish work, floors and floor coverings, roofs, sidewalks, roadways, parking areas, exterior lighting, fences, retaining or similar walls, landscaping, sprinkler systems, gutters, curbs, trash enclosures, signs, gates, parking lot striping, heating and air conditioning systems, dock boards, truck doors, dock bumpers, plumbing work and fixtures, electrical systems, lighting facilities and bulbs, sprinkler systems, fire detection systems, termite and pest extermination, and regular removal of trash and debris. Unless Landlord has elected in writing to be responsible for the Aesthetic Maintenance, Tenant shall, at Tenant's sole expense, be responsible for the Aesthetic Maintenance. Tenant shall notify Landlord in writing prior to making any repair or performing any maintenance pursuant to this section, and Landlord shall have the right to designate the contractor Tenant shall use to make any repair or to perform any maintenance on the roof, heating, ventilation and air conditioning systems (\"HVAC\"), plumbing systems, electrical systems or fire detection systems located at the Premises; provided, however, in the case of an emergency, Tenant may make a repair without notifying Landlord if Tenant notifies Landlord as soon as is reasonably possible after making the repair and otherwise complies with the terms and conditions of this Lease",
-      "id": "68c115a10a9fcc90b52cf86b",
+      "text": "Should Tenant continue to occupy the Premises after the Term ends (a “Holdover”) then:",
+      "id": "63f37d2c0d2f74adc82f4106",
       "confidence": 0.9993
     },
     {
-      "text": "No automobile, recreational vehicle or any other type of vehicle or equipment shall remain upon the Common Area longer than 24 hours, and no vehicle or equipment of any kind shall be dismantled or repaired or serviced on the Common Area. All vehicle parking shall be restricted to areas designated and marked for vehicle parking. The foregoing restrictions shall not be deemed to prevent temporary parking for loading or unloading of vehicles in designated areas.",
-      "id": "64217b1a275caef553ece408",
-      "confidence": 0.9988
+      "text": "Landlord shall not be limited in the proof of any damages which Landlord may claim against Tenant arising out of or by reason of Tenant's failure to provide and keep in force any of the Required Insurance to the amount of the insurance premium or premiums not paid or incurred by Tenant and which would have been payable under such insurance; but Landlord shall also be entitled to recover as damages for such breach, the uninsured amount of any loss, to the extent of any deficiency in the Required Insurance and damages, costs and expenses of suit suffered or incurred by reason of or damage to, or destruction of the Premises, occurring during any period when the Tenant may have failed or neglected to obtain the Required Insurance. Tenant shall in accordance with and subject to the limitations set forth in Section 14, indemnify and hold harmless Landlord and any First Mortgagee for all Damages incurred by Landlord or any First Mortgagee arising out of any deductibles for Required Insurance.",
+      "id": "653b95e68d8833a361063019",
+      "confidence": 0.948
     },
     {
-      "text": "Tenant shall not install or display any signs, banners, or advertisements inside or outside the Premises, except as may be required by law. Any unauthorized signage may be removed by Landlord at Tenant’s expense.",
-      "id": "6486a4b898f51f4d2555f608",
+      "text": "Notwithstanding anything to the contrary contained in the Lease, if, during the period (the “Prop 13 Protection Period”) beginning on the Commencement Date and ending on the day before the third (3rd) anniversary of the Commencement Date, any sale, refinancing or change of ownership of the Premises, Building or Project (the “Real Property”) is consummated (each a “Prop 13 Trigger Event”), and as a result of the Prop 13 Trigger Event, and to the extent that in connection therewith, the Real Property is reassessed (the “Reassessment”) for real property tax purposes by the appropriate governmental authority apply to such Reassessment of the Real Property; provided, that, notwithstanding the foregoing to the contrary, in no event shall the change of ownership in connection with the Closing be deemed to constitute a Prop 13 Trigger Event, it being the specific intent of the parties that a “Tax Increase” (as defined below) not include any portion of Real Property Taxes attributable to any reassessment of the Real Property triggered by the Closing.",
+      "id": "5d876e970e9a46ad8d7b0307",
+      "confidence": 0.998
+    },
+    {
+      "text": "Repairs. Leasee accepts the premises in their present condition and agrees they are suitable for the purposes for which leased. Lessor agrees to repair at his expense the roof, foundation, and exterior walls only. excluding all windows and doors, upon the receipt of written notice from Lesse requesting repairs. Lessee shall take good tare and maintain at his expense the remainder of property, and upon the termination of this lease deliver the property in good repair and condition, reasonable wear and tear and damage by fire only excepted. Lessee shall not snake any alterations, additions or improvements to the properly without the written permission of Lessor. All such additional and fixtures (except trade fixtures) shall remain and become the property of Lessor, unless Lessor requests their removal; in which event Lessee shall remove same and restore the premises to their original condition at Lessee's expense. 7. FIRE: In the event the Property, or a portion thereof, shall be damaged by fire, or other casualty insurable under standard fire and extended coverage insurance, and Lessor does not elect to terminate this lease, Lessor shall proceed to rebuild and repair at his expense. If the buildings on the property shall (a) be substantially damaged by a casualty not covered by Lessor's insurance or (b) be rendered untenantable in excess of fifty percent of the first floor area by a casualty covered by Lessor's insurance or (c) suffer damage to the extent that the remaining term of this lease is not sufficient to amortize the cost of reconstruction, then Lessor may elect to terminate this lease by giving written notice to Lessee within sixty days of the date of such casualty. Lesse shall not permit the Property to be occupied for any purpose deemed illegal, disreputable, or extra hazardous on amount of fire, nor permit any actions that will increase the fire insurance rate on the buildings on the property. If Lessor agrees to such hazardous use, Lessee agrees to pay the increase. of insurance premiums caused therby. Lessee agrees to insure at his expense. all improvements he makes to the property, trade fixtures and personal property owned by Lessee, against loss by fire. 8.",
+      "id": "64217b1a275caef553ece40b",
+      "confidence": 0.7819
+    },
+    {
+      "text": "other expenses which under GAAP, consistently applied, would\r\nnot be considered normal maintenance, repair, management or Operating Costs;",
+      "id": "64217b1a275caef553ece40b",
+      "confidence": 0.5169
+    },
+    {
+      "text": "7.2 The “Gross Sales” for any lease year shall be the total amount of all sales of merchandise and services made in, upon or from the Demised Premises during such lease year, in each case whether the same shall be made by Tenant or by any subtenant or concessionaire of Tenant, whether for cash or on credit, whether delivered from the Demised Premises or elsewhere, except that the following shall not be included in Gross Sales for such lease year or, if previously included in Gross Sales for any lease year, the same shall be deducted from Gross Sales for such lease year, as the case may be: (a) The amounts of all discounts, refunds, credits, allowances and/or adjustments made to customers;",
+      "id": "695f4e01d851e30714c7df61",
+      "confidence": 0.9996
+    },
+    {
+      "text": "Roof Repairs Landlord and Tenant will jointly inspect the roof on the Rental Commencement Date. If their inspection discloses to the reasonable satisfaction of both parties, that there is an active roof leak, Landlord shall repair such leak at its sole cost. Landlord does hereby agree that if any leaks occur to the roof of the Building at any time after the Rental Commencement Date and prior to the first anniversary of the Rental Commencement Date and provided such leaks are not caused by the acts or omissions of Tenant, its agents, contractors or employees, then Landlord shall promptly take all action necessary to repair the roof of the Building and, to the extent such costs exceed $5,000.00, such costs shall not be included in Operating Expenses.",
+      "id": "68c115d40a9fcc90b52cf86c",
+      "confidence": 0.9995
+    },
+    {
+      "text": "Maintenance and Repairs.\r\n(a)\r\nSubject to the terms of Section 10(b), Tenant shall, at its own cost and expense, maintain\r\nin good condition and repair, and replace as necessary, the entire interior and exterior of the Demised Premises (but\r\nexcluding the Common Areas), including, but not limited to, the heating, air conditioning and ventilation systems,\r\nglass, windows and doors, all plumbing, water and sewage systems and lines (located within or exclusively serving\r\nthe Demised Premises), fire sprinklers and fire protection and detection systems, interior roofs, doors, signs, fixtures,\r\nwalls and wall finishes (including but not limited to, painting of interior and exterior walls as and when deemed\r\nnecessary by Landlord), floors (including floor slabs) ceilings, columns, storefronts, plate glass, skylights, pipes,\r\nmains, water and sewer connections (located within or exclusively serving the Demised Premises), truck docks and\r\ndock doors (including, without limitation, dock levelers, dock shelters, dock bumpers, dock plates, dock seals and\r\ndock lighting), doors, door jams, all electrical facilities and equipment including, without limitation, lighting\r\nfixtures, lamps, fans and any exhaust equipment and systems, electrical motors, and all other appliances, fixtures and\r\nequipment of every kind and nature located in, upon or about the Demised Premises. All such maintenance, repairs\r\nand replacements shall be of first class quality and be sufficient for the proper maintenance and operation of the\r\nDemised Premises. Tenant shall keep and maintain the Demised Premises safe, secure and clean, specifically\r\nincluding, but not by way of limitation, removal of any snow, ice, waste and refuse matter. Tenant shall not permit\r\nanything to be done upon the Demised Premises (and shall perform all maintenance and repairs thereto so as not) to\r\ninvalidate, in whole or in part, or prevent the procurement of any insurance policies which may, at any time, be\r\nrequired under the provisions of this Lease. Tenant shall not obstruct or permit the obstruction of any parking area,\r\nadjoining street, sidewalk or Common Area. During the Term, Tenant shall maintain in full force and effect a\r\nservice contract for the maintenance of the heating, ventilation and air conditioning systems with an entity\r\nacceptable to Landlord. Such service contract shall conform to the requirements under the warranty, if any, on said\r\nsystems, including, but not limited to, (i) adjust belt tension; (ii) lubricate all moving parts, as necessary; (iii) inspect\r\nand adjust all temperature and safety controls; (iv) check refrigeration system for leaks and operation; (v) check\r\nrefrigeration system for moisture; (vi) inspect compressor oil level and crank case heaters; (vii) check head pressure,\r\nsuction pressure and oil pressure; (viii) inspect air filters and replace when necessary; (ix) check space conditions;\r\n(x) check condensate drains and drain pans and clean, if necessary; (xi) inspect and adjust all valves; (xii) check and\r\nadjust dampers; (xiii) run machine through complete cycle; (xiv) replacement of filters as necessary; (xv) provide\r\nfor at least quarterly inspections; and (xvi) cleaning of the applicable units, systems and equipment, together with\r\nsuch other adjustments and servicing as each such inspection discloses to be recommended or required. Tenant shall\r\ndeliver to Landlord (1) a copy of said service contract prior to the Commencement Date, and (2) thereafter, a copy\r\nof a renewal or substitute service contract within thirty (30) days prior to the expiration of the existing service\r\ncontract, and (3) upon Landlord’s request, a copy of the service log reflecting all services performed under such\r\nservice contract.\r\n(b)\r\nSubject to the provisions of Sections 20 and 21, Landlord shall maintain, repair and\r\nreplace the Common Areas, drive ways, parking lot, sidewalks and appurtenances thereto, and make or cause to be\r\nmade, all structural repairs to and replacements of the “Structural Components” (as hereinafter defined) of the\r\nBuilding. For purposes of this Lease, the term “Structural Components” shall mean the exterior roof, foundation\r\n(beneath the floor slab) and structural frame of the Building, structural soundness of exterior walls (excluding\r\nwindows, window frames, doors and door frames and the painting of all walls). All costs incurred by Landlord\r\nunder this Section 10(b) shall be deemed Operating Expenses, provided that, all costs and expenses incurred by\r\nLandlord with respect to the replacement of the roof shall be the sole responsibility of Landlord and shall not be",
+      "id": "64217b1a275caef553ece40b",
+      "confidence": 0.9701
+    },
+    {
+      "text": "Tenant, concurrently with the execution of this Lease,  has deposited with Landlord the amounts described in sections 2.2.1 and 2.2.2  below.",
+      "id": "63f37d2c0d2f74adc82f4104",
+      "confidence": 0.9622
+    },
+    {
+      "text": "Capital expenditures improving energy efficiency shall be recoverable over the useful life as determined by GAAP.",
+      "id": "68c116980a9fcc90b52cf86e",
+      "confidence": 0.9995
+    },
+    {
+      "text": "Lessor shall be responsible for the payment of all municipal, county, and/or state ad valorem taxes assessed during the term of this lease on the leased real property. Lessee shall pay any taxes levied against the personal property of the Lessee in and about the premises.",
+      "id": "5d876e970e9a46ad8d7b0307",
       "confidence": 0.9994
     },
     {
-      "text": "The definition of Tenant’s Trade Names in Article 1 of the Lease is hereby deleted in its entirety and replaced with the following: “AT&T” or “AT&T Authorized Retailer” or, upon prior written notice to Landlord, such other trade name used by Tenant in the state of Utah.",
-      "id": "6673cd08477270077cde1273",
+      "text": "In the event that Landlord agrees to perform any additional work requested by Tenant in excess of the Expansion Space Shell, then the Expansion Base Rent shall be increased by the cost of such additional improvements, amortized on a straight-line basis over the balance of the initial Term of the Lease with an interest factor of 12% per annum.",
+      "id": "64217b1a275caef553ece40e",
+      "confidence": 0.9996
+    },
+    {
+      "text": "Tenant, at its sole cost, will comply with all laws relating to Tenant’s storage, use and disposal of Hazardous Materials. Tenant shall solely be responsible for and will defend, indemnify and hold Landlord, its agents and employees, harmless from and against all claims, costs and liabilities, including attorney’s fees and costs, arising out of or in connection with the removal, clean-up and restoration work and materials necessary to return the Premises, and any other property of whatever nature located on the Premises, to their condition existing prior to the appearance of Hazardous Materials on the Premises Tenant’s obligations under this paragraph will survive the termination of this Lease.",
+      "id": "68c01cf286f264baffa51891",
+      "confidence": 0.9987
+    },
+    {
+      "text": "28.\r\nSIGNAGE. Subject to prior approval by any applicable governmental authority, Tenant\r\nshall be allowed to install and display on the Property the following signage: (i) a monument sign along\r\nany roadway that is adjacent to the Property (the “Monument Signage”) consistent with a prototypical\r\nR&R BBQ restaurant, and (ii) interior and exterior signage and advertising materials on the Building,\r\nconsistent with signs generally used by R&R BBQ restaurants (“Building Signage”). Tenant\r\nacknowledges, understands and agrees that\r\nthe Monument Signage, the Building Signage,\r\nthe Pylon\r\nSignage and any other signage installed on the Premises are subject to all applicable laws and regulations\r\nand all required governmental approvals. Tenant, at Tenant’s sole cost and expense, shall be responsible\r\nfor obtaining any consents, permits or approvals required by any governmental authority prior to the",
+      "id": "6486a4b898f51f4d2555f608",
+      "confidence": 1
+    },
+    {
+      "text": "Tenant will not conduct or permit to be conducted  any activity, or place any equipment in or about the Premises, which will, in  any way, increase the rate of fire insurance or other insurance on the  Building; and if any increase in the rate of fire insurance or other  insurance is stated by any insurance company or by the applicable Insurance  Rating Bureau to be due to activity or equipment in or about the Premises,  such statement shall be conclusive evidence that the increase in such rate is  due to such activity or equipment and as a result thereof, Tenant shall be  liable for such increase and shall reimburse Landlord therefor.",
+      "id": "5d51128d18b40d3e38ed4369",
+      "confidence": 0.9862
+    },
+    {
+      "text": "Landlord shall rebuild structural components following casualty.",
+      "id": "68c116980a9fcc90b52cf86e",
+      "confidence": 0.9758
+    },
+    {
+      "text": "It is understood and agreed that neither this Lease nor any interest therein or hereunder, nor any estate hereby created in favor of Tenant, shall pass by operation of law under any state or federal insolvency, bankruptcy, or inheritance act, or any similar law now or hereafter in effect, to any trustee, receiver, assignee for the benefit of creditors, heirs, legatees, devisees or any other person whomsoever without the express written consent of Landlord first had and obtained therefor as provided in Article 18 above.",
+      "id": "66163264081a1a5f9a884e5f",
       "confidence": 0.9998
     },
     {
-      "text": "During the Term, Tenant does hereby covenant and agree to pay Landlord, for the\nuse and occupancy of the Premises, at the times and in the manner hereinafter provided (“Base\nRent”), the sum of Nineteen Thousand Dollars ($19,000) per month increasing each Lease Year\nthereafter at the rate of three per cent (3%) of the Base Rent for the immediately preceding Lease\nYear",
+      "text": "The Base Rent for each Lease Year or portion thereof, together with the estimated Additional Rent, pursuant to Section 3.3 below, shall be due and payable in advance, in legal tender of the United States of America, in twelve (12) equal installments, one such installment being due on the first day of each calendar month during the Term of the Lease and any applicable extensions or renewals thereof. Tenant agrees to pay such Base Rent and Additional Rent to Landlord monthly, in advance, without demand. If the Lease Term commences on a day other than the first day of a month or terminates other than the last day of a month, then the installments of Base Rent and Additional Rent for such month(s) shall be prorated, based upon the number of days in such month.",
       "id": "63f37d2c0d2f74adc82f4101",
-      "confidence": 1.0
+      "confidence": 0.9995
     },
     {
-      "text": "Taxes Defined. “Taxes” shall mean: (1) all real estate taxes, betterment assessments, and other assessments on the Building and/or Property, including, but not limited to, assessments for special improvement districts and building improvement districts, taxes and assessments levied in substitution or supplementation in whole or in part of any such taxes and assessments and the Property’s share of any real estate taxes and assessments under any reciprocal easement agreement, common area agreement or similar agreement as to the Property; (2) all personal property taxes for property that is owned by Landlord and used in connection with the operation, maintenance and repair of the Property; and (3) all costs and fees incurred in connection with seeking reductions in any tax liabilities described in (1) and (2), including, without limitation, any costs incurred by Landlord for compliance, review and appeal of tax liabilities. Without limitation, Taxes shall not include any income, capital levy, franchise, capital stock, gift, estate or inheritance tax.",
-      "id": "5d876e970e9a46ad8d7b0307",
-      "confidence": 0.9997
+      "text": "Water Efficiency. Upgrading water fixtures, such as low-flow toilets and faucet aerators, can provide long-term savings and a quick payback in many cases. Using a baseline potable water flow target, a lease can require the building to meet or exceed this baseline target within a specified period of time with such actions as replacing fixtures with compliant fixtures, limiting the use of potable water for water-efficient landscaping, and capturing and re-using rain or greywater. Look for products with the WaterSense label.",
+      "id": "68c116460a9fcc90b52cf86d",
+      "confidence": 0.9958
     },
     {
-      "text": "No act by Landlord shall be an acceptance of a surrender of the Premises, and no agreement to accept a surrender of the Premises shall be valid unless it is in writing and signed by Landlord. Upon termination of the Lease Term or earlier termination of Tenant’s right of possession, Tenant shall surrender the Premises to Landlord in the same condition as received, broom clean, ordinary wear and tear and casualty loss and condemnation covered by Paragraphs 15 and 16 excepted. Tenant shall give written notice to Landlord at least thirty (30) days prior to vacating the Premises and shall meet with Landlord for a joint inspection of the Premises at the time of vacating. In the event of Tenant’s failure to give such notice or to participate in such joint inspection, Landlord’s inspection shall be deemed conclusive for purposes of determining Tenants’ responsibility for repairs and restoration. No such performance by Landlord shall create any liability on the part of Landlord whatsoever. Any Trade Fixtures, Tenant-Made Alterations required to be removed by Tenant under Paragraph 12 and property not so removed by Tenant as permitted or required herein shall be deemed abandoned and may be stored, removed, and disposed of by Landlord at Tenant’s expense, and Tenant waives all claims against Landlord for any damages resulting from Landlord’s retention and disposition of such property. All obligations of Tenant hereunder not fully performed as of the termination of the Lease Term shall survive the termination of the Lease Term, including without limitation, indemnity obligations, payment obligations with respect to Operating Expenses and all obligations concerning the condition and repair of the Premises. If Tenant fails to perform any obligation prior to the expiration or earlier termination of this Lease, and such failure continues for more than five (5) business days following written notice from Landlord, Landlord may, but shall not be obligated to, perform such obligation and Tenant shall pay Landlord all costs associated therewith, plus an administrative fee of 5% of such costs, within thirty (30) days following Landlord’s delivery to Tenant of an invoice therefor accompanied by reasonable supporting documentation with respect thereto, and any time required by Landlord to complete such obligations shall be considered a period of holding over and the terms of Paragraph 22 shall apply.",
-      "id": "66447de751cf3210d3452f00",
-      "confidence": 0.9999
+      "text": "This Lease shall renew automatically beyond the Initial Term for the applicable Premises for additional successive periods of five (5) years each (individually, a “Renewal Period”), upon the same terms, covenants, conditions and rental as set forth herein, unless either party gives written notice to the other party not less than one hundred and eighty (180) days prior to the expiration of the Initial Term of this Lease or expiration of the then current Renewal Period, as applicable. Notwithstanding the foregoing, the Term of the Lease shall not be extended if, at the time of commencement of a Renewal Period, an Event of Default as to the subject Premises has occurred and is continuing. If the Lease is not extended for the subject Premises pursuant to the preceding sentence for an additional Renewal Period, all remaining rights of renewal for the subject Premises shall automatically expire.",
+      "id": "63f37d2c0d2f74adc82f4107",
+      "confidence": 0.9994
+    },
+    {
+      "text": "(i) an identification sign on the exterior of the Building, which signage shall consist solely of the name “SOW Good” or any other name reasonably approved by Landlord and/or its logo, and (ii) directional signage at other locations on the Property from time to time, and subject to Landlord’s reasonable prior approval of such signage and Tenant’s compliance with the other provisions of this Paragraph. The location, quality, design, style, lighting and size of such signage shall be subject to Landlord’s reasonable prior written approval.",
+      "id": "6486a4b898f51f4d2555f608",
+      "confidence": 1
+    },
+    {
+      "text": "All policies of insurance required to be carried by Tenant pursuant to this Section 11.01 shall be\r\nwritten by responsible insurance companies authorized to do business in the State and acceptable to Landlord. Any\r\nsuch insurance required of Tenant hereunder may be furnished by Tenant under any blanket policy carried by it or\r\nunder a separate policy therefor; provided, however, that: (1) any such blanket policy carried with respect to the\r\ninsurance required under subparagraphs (i), (iv), (v), (vi) and (vii) of Section 11.01(a) shall contain a \"per location\"\r\nendorsement assuring that any aggregate limit under such blanket policy shall apply separately to the Leased Premises\r\nand that the insurer thereunder shall provide written notice to Landlord if the available portion of such aggregate is\r\nreduced to less than the minimum amounts required under Section 11.01(a) by either payment of claims or the\r\nestablishment of reserves for claims (whereupon Tenant shall be obligated to take immediate steps to increase the\r\namount of its insurance coverage in order to satisfy the minimum requirements set forth above), and (2) any such\r\nblanket policy carried with respect to the property insurance required under subparagraph (ii) of Section 11.01(a) shall\r\ncontain an \"agreed value\" endorsement with respect to all of the items of property identified in such subparagraph. A\r\ncopy of each paid-up policy evidencing such insurance (appropriately authenticated by the insurer) or a certificate of\r\nthe insurer, certifying that such policy has been issued, providing the coverage required by this Section and containing\r\nprovisions specified herein, shall be delivered to Landlord prior to the commencement of the term of this Lease and,\r\nupon renewals, not less than thirty (30) days prior to the expiration of such coverage. Landlord may, at any time, and\r\nfrom timo to timo, inopoot and/or copy any and all inouranoo polioioo required to bo proeurod by Tenant horoundor. The\r\n'per location' endorsement described in clause (1) above shall not be required if and so long as Landlord, acting\r\nreasonably and in good faith, determines in writing that Tenant's excess or umbrella insurance coverage is\r\nadequate to eliminate the need for such an endorsement; if Tenant desires Landlord to make such a\r\ndetermination, Tenant shall so notify Landlord in wilting and shall provide Landlord with such information\r\nthat Landlord may reasonably request for the purpose of making such a determination.",
+      "id": "5d51128d18b40d3e38ed4369",
+      "confidence": 0.9995
+    },
+    {
+      "text": "Commencing on the Commencement Date, and continuing on the first of each month thereafter, Tenant shall pay to Landlord $284,220.54 per month (\"Base Rent\"). Base Rent shall be remitted to the Landlord at its address stated for notices in this Lease as the same may be amended from time to time or to such other address required by Landlord in a written notice to Tenant and shall be due and payable on the first day of each month during the Term and tendered in cash. Base Rent for any partial month shall be prorated based on the number of days in the applicable calendar month.",
+      "id": "63f37d2c0d2f74adc82f4101",
+      "confidence": 0.9998
     }
   ]
 }
