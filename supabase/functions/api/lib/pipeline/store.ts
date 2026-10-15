@@ -215,6 +215,54 @@ export async function leaseCandidates(orgId: string, limit = 300): Promise<Lease
     .eq('org_id', orgId).order('updated_at', { ascending: false }).limit(limit)) as LeaseCandidate[];
 }
 
+// Words that say nothing about which lease a document belongs to.
+const GENERIC_WORDS = new Set([
+  'the', 'and', 'llc', 'inc', 'ltd', 'corp', 'corporation', 'company', 'limited', 'partnership', 'group', 'holdings',
+  'street', 'road', 'avenue', 'ave', 'suite', 'floor', 'unit', 'building', 'drive', 'boulevard', 'blvd', 'lane',
+  'north', 'south', 'east', 'west', 'tenant', 'landlord', 'lease', 'properties', 'property', 'trust', 'center',
+  'way', 'court', 'place', 'plaza', 'park', 'highway', 'route', 'city', 'state',
+]);
+// Words start with a letter: bare numbers (street numbers) also match amounts and dates in any lease.
+const words = (s: string | null | undefined) =>
+  new Set((s ?? '').toLowerCase().match(/[a-z][a-z0-9]{2,}/g)?.filter((w) => !GENERIC_WORDS.has(w)) ?? []);
+
+/**
+ * Existing leases worth showing the AI for linking: those whose tenant, landlord or address words appear in the
+ * document text (best matches first, at most `max`), plus the lease the user picked. Sending the whole portfolio
+ * costs ~60 input tokens per lease on every document.
+ */
+export function relevantCandidates<T extends LeaseCandidate>(candidates: T[], documentText: string, targetLeaseId: string | null, max = 12): T[] {
+  const text = words(documentText);
+  // Share of a name's distinctive words found in the document (0..1), and how many matched.
+  const match = (name: string | null) => {
+    const w = [...words(name)];
+    const hits = w.filter((x) => text.has(x)).length;
+    return { hits, share: w.length ? hits / w.length : 0 };
+  };
+  const scored = candidates.map((c) => {
+    const tenant = match(c.tenant_name);
+    const address = match(c.premises_address);
+    const landlord = match(c.landlord_name);
+    // Most of the tenant name, or most of a multi-word address, identifies a lease; a landlord alone is weak.
+    const strong = tenant.share > 0.5 || (address.hits >= 2 && address.share >= 0.5);
+    const score = c.id === targetLeaseId ? 1000 : tenant.share * 3 + address.share * 2 + landlord.share;
+    return { c, score, strong };
+  });
+  return scored
+    .filter((s) => s.score >= 1000 || s.strong)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map((s) => s.c);
+}
+
+/** A completed file in the organization with exactly the same content (same SHA-256), if any. */
+export async function duplicateFile(orgId: string, fileId: string, sha256: string): Promise<{ id: string; file_name: string; created_at: string } | null> {
+  const { data } = await db().from('lease_files').select('id, file_name, created_at')
+    .eq('org_id', orgId).eq('sha256', sha256).eq('status', 'completed').neq('id', fileId)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  return (data as { id: string; file_name: string; created_at: string } | null) ?? null;
+}
+
 async function leaseInOrg(orgId: string, leaseId: string | null | undefined): Promise<LeaseCandidate | null> {
   if (!leaseId || !/^[0-9a-f-]{36}$/i.test(leaseId)) return null;
   const { data } = await db().from('leases')
@@ -348,10 +396,33 @@ export function clauseRows(orgId: string, documentId: string, leaseId: string | 
     }));
 }
 
-/** Replace all of a document's clauses with the output of one classifier. */
+interface EditedClause {
+  text: string | null; clause_type: string; original_clause_type: string | null;
+  verified: boolean; dismissed: boolean; edited_by: string | null; edited_at: string;
+}
+const clauseKey = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Replace all of a document's clauses with the output of one classifier. Clauses a user edited (type, verified,
+ * removed) keep those edits when the new output has a clause with the same text.
+ */
 export async function replaceClauses(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude', model: string | null = null): Promise<number> {
+  const edited = must(await db().from('clauses')
+    .select('text, clause_type, original_clause_type, verified, dismissed, edited_by, edited_at')
+    .eq('document_id', documentId).not('edited_at', 'is', null), 'load edited clauses') as EditedClause[];
+  const edits = new Map(edited.map((e) => [clauseKey(e.text), e]));
   must(await db().from('clauses').delete().eq('document_id', documentId), 'delete clauses');
-  const rows = clauseRows(orgId, documentId, leaseId, clauses, source, model);
+  // Every row carries every edit column: a bulk insert fills columns missing from some rows with NULL, not the default.
+  const unedited = { original_clause_type: null, verified: false, dismissed: false, edited_by: null, edited_at: null };
+  const rows = clauseRows(orgId, documentId, leaseId, clauses, source, model).map((r) => {
+    const e = edits.get(clauseKey(r.text));
+    if (!e) return { ...r, ...unedited };
+    // The user's type wins; remember the new prediction when it differs.
+    return {
+      ...r, clause_type: e.clause_type, original_clause_type: e.clause_type !== r.clause_type ? r.clause_type : null,
+      verified: e.verified, dismissed: e.dismissed, edited_by: e.edited_by, edited_at: e.edited_at,
+    };
+  });
   for (let i = 0; i < rows.length; i += 200) must(await db().from('clauses').insert(rows.slice(i, i + 200)), 'insert clauses');
   return rows.length;
 }

@@ -145,7 +145,7 @@ export const CLAUSE_SCHEMA = s.object({
 /** Abstract output; clauses are only requested when the organization classifies clauses with Claude. */
 const abstractSchema = (withClauses: boolean) => s.object({
   fields: FIELDS_SCHEMA,
-  summary: s.nullable(s.string('3–6 sentence plain-language summary')),
+  summary: s.nullable(s.string('2–4 sentence plain-language summary')),
   changes_made: s.nullable(s.string('For amendments/addenda/letters: what this document changes. Null for a main lease.')),
   effective_date: s.nullable(s.string('YYYY-MM-DD')),
   ...(withClauses ? { clauses: s.array(CLAUSE_SCHEMA) } : {}),
@@ -175,7 +175,7 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
   const withClauses = info.classifyClauses !== false;
   const linking = [
     `Other documents in the same uploaded file: ${info.siblings.length ? JSON.stringify(info.siblings) : 'none'}.`,
-    `Existing leases in this organization: ${info.candidates.length ? JSON.stringify(info.candidates) : 'none'}.`,
+    `Existing leases in this organization whose tenant, landlord or address appear in this document (other leases don't match): ${info.candidates.length ? JSON.stringify(info.candidates) : 'none'}.`,
     info.targetLeaseId ? `The user uploaded this file as an amendment to existing lease ${info.targetLeaseId}.` : '',
   ].filter(Boolean).join('\n');
 

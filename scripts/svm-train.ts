@@ -318,6 +318,12 @@ const model: SvmModel = {
   terms: vec.terms,
   idf: Array.from(vec.idf, (v) => round(v, 5)),
   weights,
+  metrics: {
+    accuracy: round(accuracy, 4),
+    macro_f1: round(macroF1, 4),
+    examples: cvSet.length,
+    f1: Object.fromEntries([...perClass].filter(([id]) => counts.has(id)).map(([id, p]) => [id, round(p.f1, 3)])),
+  },
 };
 writeFileSync(MODEL_OUT, modelModule(JSON.stringify(model)));
 writeFileSync(CLAUSES_OUT,

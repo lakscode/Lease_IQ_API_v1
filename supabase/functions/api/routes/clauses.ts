@@ -5,6 +5,8 @@ import { requireRole, withOrg } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
 import { badRequest, notFound, num, readJson, str } from '../lib/http.ts';
 import { abstractClauses, clauseSvmInfo, predictClauses } from '../lib/clause-svm.ts';
+import { CLAUSE_TYPES } from '../lib/abstract.ts';
+import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
 import { classifyDocumentClauses, loadClauseDoc } from '../lib/pipeline/clauses.ts';
 
 const router = new Hono<AppEnv>();
@@ -15,6 +17,13 @@ const MAX_CHARS = 2_000_000;
 
 const topK = (v: unknown) => Math.min(10, Math.max(1, Math.trunc(num(v) ?? 3)));
 const minConfidence = (v: unknown) => Math.min(1, Math.max(0, num(v) ?? 0.5));
+
+// GET /api/clauses/taxonomies → clause types a user can pick when editing a clause:
+//   lease = lease_clauses.json (SVM, LangChain, Llama), standard = CLAUSE_TYPES (Claude, Vercel AI Gateway)
+router.get('/taxonomies', (c) => c.json({
+  lease: [...new Set(Object.values(LEASE_CLAUSES))].sort((a, b) => a.localeCompare(b)),
+  standard: [...CLAUSE_TYPES],
+}));
 
 // GET /api/clauses/types → clause types the model predicts
 router.get('/types', async (c) => c.json(await clauseSvmInfo()));

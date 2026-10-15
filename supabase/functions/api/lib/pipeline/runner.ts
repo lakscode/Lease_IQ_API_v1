@@ -15,7 +15,7 @@ import {
   chunkPages, extractPageTexts, fitsAiPdfLimits, hasUsableText, isPdf, loadPdf, looksScanned, pagePreview, pagesNeedingOcr, subPdf,
 } from './pdf.ts';
 import {
-  aiMode, applyAbstract, documentInput, leaseCandidates, loadFilePageTexts, normalizeSplit, previousMapping,
+  aiMode, applyAbstract, documentInput, documentPages, duplicateFile, leaseCandidates, relevantCandidates, loadFilePageTexts, normalizeSplit, previousMapping,
   removeFileDocuments, resolveLease, savePageTexts, saveSplit,
 } from './store.ts';
 import type { FileWork, LeaseFileRow, PipelineStep, SplitDocument } from './types.ts';
@@ -120,6 +120,16 @@ async function stepPrepare(file: LeaseFileRow): Promise<StepOutcome> {
   if (!isPdf(bytes)) throw new Error('The file is not a PDF.');
   if (bytes.length > env.maxUploadMb * 1024 * 1024) throw new Error(`The file is larger than ${env.maxUploadMb} MB.`);
   const sha256 = await sha256Hex(bytes);
+  // Same content already processed in this organization: stop before any AI call (re-analyze that file instead).
+  if (file.work.mode !== 'reanalysis') {
+    const dup = await duplicateFile(file.org_id, file.id, sha256);
+    if (dup) {
+      throw new Error(
+        `This file has the same content as "${dup.file_name}", already processed on ${dup.created_at.slice(0, 10)}. ` +
+        'No AI tokens were used. Open that file, or use Re-analyze on it to process it again.',
+      );
+    }
+  }
   let pages: number;
   try {
     pages = (await loadPdf(bytes)).getPageCount();
@@ -203,7 +213,11 @@ async function stepAbstract(file: LeaseFileRow, name: string, aiImpl: PipelineAi
   const input = await documentInput(row);
   const siblings = (file.work.documents ?? []).filter((d) => d.index !== index)
     .map((d) => ({ index: d.index, doc_type: d.doc_type, title: d.title, page_start: d.page_start, page_end: d.page_end }));
-  const candidates = (await leaseCandidates(file.org_id)).map(({ main_document_id: _m, ...rest }) => rest);
+  // Only leases the document plausibly belongs to (tenant / address words in its text), not the whole portfolio.
+  const all = await leaseCandidates(file.org_id);
+  const docText = (await documentPages(doc.document_id)).map((p) => p.text).join('\n');
+  const candidates = relevantCandidates(all, docText, file.target_lease_id).map(({ main_document_id: _m, ...rest }) => rest);
+  if (all.length) await logStep(file, name, `Linking: ${candidates.length} of ${all.length} existing lease(s) match this document`);
   const locale = await uploaderLocale(file.uploaded_by);
   const { classifier } = await orgClauseClassifier(file.org_id);
   const effort = (await aiMode()) === 'economy' ? 'medium' : 'high';

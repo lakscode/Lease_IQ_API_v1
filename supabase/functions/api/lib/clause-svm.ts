@@ -51,6 +51,8 @@ export interface SvmModel {
   idf: number[];
   /** Per term: flat [classIndex, weight, classIndex, weight, ...] (near-zero weights pruned). */
   weights: number[][];
+  /** Cross-validated quality (absent in models trained before it was added). f1 by clause id; missing = too few examples to test. */
+  metrics?: { accuracy: number; macro_f1: number; examples: number; f1: Record<string, number> };
 }
 
 interface LoadedModel {
@@ -126,7 +128,7 @@ function rank(model: LoadedModel, text: string, topK: number): ClausePrediction 
 /** Clause types the model can predict (lease_clauses.json ids that had training data). */
 export async function clauseSvmInfo() {
   const { raw } = await loadModel();
-  return { trained_at: raw.trained_at, clause_types: raw.classes };
+  return { trained_at: raw.trained_at, clause_types: raw.classes, metrics: raw.metrics ?? null };
 }
 
 /** Classify clause texts. `topK` = predicted clause + alternatives. */

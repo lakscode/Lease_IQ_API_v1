@@ -1,5 +1,5 @@
 {
-  "trained_at": "2026-10-15T06:49:25Z",
+  "trained_at": "2026-10-15T12:35:58Z",
   "trainer": "scripts/svm-train.ts",
   "examples": 5412,
   "clause_types": 61,

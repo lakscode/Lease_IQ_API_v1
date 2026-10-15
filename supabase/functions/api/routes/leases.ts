@@ -6,6 +6,7 @@ import { requireRole, withOrg } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
 import { ApiError, badRequest, readJson, str } from '../lib/http.ts';
 import { ABSTRACT_FIELDS, CLAUSE_TYPES, coerceFieldValue } from '../lib/abstract.ts';
+import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
 import { computeAlerts, noticeByDate, recomputeLease, sortFamily, type FamilyDocument, type TermValue } from '../lib/lease-terms.ts';
 import { logAccess } from '../lib/access-log.ts';
 import { downloadBytes, publicLogoUrl, sha256Hex, signedUrl } from '../lib/storage.ts';
@@ -280,25 +281,79 @@ async function editHistory(orgId: string, leaseId: string) {
   }));
 }
 
-// GET /api/leases/:id/clauses → grouped by type
+// GET /api/leases/:id/clauses[?include_dismissed=1] → grouped by type (removed clauses only on request)
 router.get('/:id/clauses', async (c) => {
   const leaseId = c.req.param('id');
   await loadLease(c, leaseId);
-  return c.json(await groupedClauses(c.get('orgId'), leaseId));
+  return c.json(await groupedClauses(c.get('orgId'), leaseId, c.req.query('include_dismissed') === '1'));
+});
+
+/** Types a user may assign: both taxonomies (the clause's classifier decides which one its prediction used). */
+const EDITABLE_TYPES = new Set<string>([...CLAUSE_TYPES, ...Object.values(LEASE_CLAUSES)]);
+
+// PATCH /api/leases/:id/clauses/:clauseId { clause_type?, verified?, dismissed? } → edit a predicted clause.
+// Each change is recorded in clause_edits (Activity tab).
+router.patch('/:id/clauses/:clauseId', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const orgId = c.get('orgId');
+  const clause = must(await db().from('clauses')
+    .select('id, document_id, lease_id, clause_type, original_clause_type, verified, dismissed, text')
+    .eq('id', c.req.param('clauseId')).eq('org_id', orgId).maybeSingle(), 'load clause') as {
+    id: string; document_id: string; lease_id: string | null; clause_type: string; original_clause_type: string | null;
+    verified: boolean; dismissed: boolean; text: string | null;
+  } | null;
+  const doc = clause && must(await db().from('documents').select('lease_id').eq('id', clause.document_id).maybeSingle(), 'doc') as { lease_id: string | null } | null;
+  if (!clause || doc?.lease_id !== leaseId) throw new ApiError('not_found', 'Clause not found');
+
+  const body = await readJson(c);
+  const update: Record<string, unknown> = {};
+  const changes: { action: 'type' | 'verify' | 'unverify' | 'dismiss' | 'restore'; old_value: string | null; new_value: string | null }[] = [];
+  if ('clause_type' in body) {
+    const type = str(body.clause_type);
+    if (!type || !EDITABLE_TYPES.has(type)) throw badRequest('Choose a clause type from the list');
+    if (type !== clause.clause_type) {
+      const original = clause.original_clause_type ?? clause.clause_type;
+      update.clause_type = type;
+      update.original_clause_type = type === original ? null : original; // back to the prediction → no longer "changed"
+      changes.push({ action: 'type', old_value: clause.clause_type, new_value: type });
+    }
+  }
+  if (typeof body.verified === 'boolean' && body.verified !== clause.verified) {
+    update.verified = body.verified;
+    changes.push({ action: body.verified ? 'verify' : 'unverify', old_value: null, new_value: null });
+  }
+  if (typeof body.dismissed === 'boolean' && body.dismissed !== clause.dismissed) {
+    update.dismissed = body.dismissed;
+    changes.push({ action: body.dismissed ? 'dismiss' : 'restore', old_value: null, new_value: null });
+  }
+  if (!changes.length) return c.json({ id: clause.id, changed: false });
+
+  const userId = c.get('user').id;
+  const now = new Date().toISOString();
+  must(await db().from('clauses').update({ ...update, edited_by: userId, edited_at: now }).eq('id', clause.id), 'save clause');
+  must(await db().from('clause_edits').insert(changes.map((ch) => ({
+    org_id: orgId, document_id: clause.document_id, lease_id: leaseId, clause_id: clause.id,
+    clause_text: (clause.text ?? '').slice(0, 300), ...ch, edited_by: userId, edited_at: now,
+  }))), 'record clause edit');
+  await logAccess({ orgId, userId, action: 'edit', leaseId, documentId: clause.document_id, details: { clause_id: clause.id, changes } });
+  return c.json({ id: clause.id, changed: true, ...update });
 });
 
 interface ClauseOut {
   id: string; document_id: string; document_title: string | null; doc_type: string | null; clause_type: string;
-  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama'; model: string | null; confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
+  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama'; model: string | null; confidence: number | null;
+  original_clause_type: string | null; verified: boolean; dismissed: boolean; edited_at: string | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
   page: number | null; paragraph: number | null; line: number | null; text: string | null;
 }
 
-async function groupedClauses(orgId: string, leaseId: string): Promise<{ clause_type: string; clauses: ClauseOut[] }[]> {
+async function groupedClauses(orgId: string, leaseId: string, includeDismissed = false): Promise<{ clause_type: string; clauses: ClauseOut[] }[]> {
   const docs = must(await db().from('documents').select('id, title, doc_type, page_start').eq('org_id', orgId).eq('lease_id', leaseId), 'docs') as { id: string; title: string | null; doc_type: string }[];
   if (!docs.length) return [];
   const rows = must(await db().from('clauses')
-    .select('id, document_id, clause_type, source, model, confidence, alt_types, section, page, paragraph, line, text')
+    .select('id, document_id, clause_type, source, model, confidence, alt_types, section, page, paragraph, line, text, original_clause_type, verified, dismissed, edited_at')
     .eq('org_id', orgId).in('document_id', docs.map((d) => d.id)), 'clauses') as Omit<ClauseOut, 'document_title' | 'doc_type'>[];
+  if (!includeDismissed) rows.splice(0, rows.length, ...rows.filter((r) => !r.dismissed));
   const byId = new Map(docs.map((d) => [d.id, d]));
   const order = new Map<string, number>(CLAUSE_TYPES.map((t, i) => [t, i]));
   const groups = new Map<string, ClauseOut[]>();
@@ -377,6 +432,25 @@ async function userNames(ids: (string | null)[]): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.id, r.display_name || r.email || r.id]));
 }
 
+/** Clause edit history of a lease's documents, newest first. */
+async function clauseHistory(orgId: string, leaseId: string) {
+  const docs = must(await db().from('documents').select('id, title, doc_type').eq('org_id', orgId).eq('lease_id', leaseId), 'docs') as { id: string; title: string | null; doc_type: string }[];
+  if (!docs.length) return [];
+  const rows = must(await db().from('clause_edits')
+    .select('id, document_id, clause_id, clause_text, action, old_value, new_value, edited_at, editor:profiles!clause_edits_profile_fk(email, display_name)')
+    .eq('org_id', orgId).in('document_id', docs.map((d) => d.id)).order('edited_at', { ascending: false }).limit(500), 'clause edits') as unknown as {
+    id: number; document_id: string; clause_id: string | null; clause_text: string | null; action: string;
+    old_value: string | null; new_value: string | null; edited_at: string;
+    editor: { email: string | null; display_name: string | null } | null;
+  }[];
+  const byId = new Map(docs.map((d) => [d.id, d]));
+  return rows.map((r) => ({
+    id: r.id, document_id: r.document_id, document_title: byId.get(r.document_id)?.title ?? null, doc_type: byId.get(r.document_id)?.doc_type ?? null,
+    clause_id: r.clause_id, clause_text: r.clause_text, action: r.action, old_value: r.old_value, new_value: r.new_value,
+    edited_at: r.edited_at, edited_by: r.editor?.display_name || r.editor?.email || null,
+  }));
+}
+
 // GET /api/leases/:id/activity → processing timeline, edits, AI usage per file
 router.get('/:id/activity', async (c) => {
   const leaseId = c.req.param('id');
@@ -414,6 +488,7 @@ router.get('/:id/activity', async (c) => {
   return c.json({
     files: files.map((f) => ({ ...f, logs: logs.filter((l) => l.file_id === f.id) })),
     edits: await editHistory(orgId, leaseId),
+    clause_edits: await clauseHistory(orgId, leaseId),
     usage: [...usage.values()],
   });
 });

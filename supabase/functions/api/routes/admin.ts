@@ -17,6 +17,8 @@ import { signInProviders } from './me.ts';
 import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels, gatewayStatus } from '../lib/ai-gateway.ts';
 import { clauseSvmInfo } from '../lib/clause-svm.ts';
 import { LANGCHAIN_DEFAULT_MODEL } from '../lib/clause-langchain.ts';
+import { ABSTRACT_FIELDS, CLAUSE_TYPES } from '../lib/abstract.ts';
+import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
 import { LLAMA_DEFAULT_MODEL, LLAMA_MODEL_RE } from '../lib/clause-llama.ts';
 import { CLAUSE_CLASSIFIERS, type ClauseClassifier } from '../lib/pipeline/clauses.ts';
 import { aiMode } from '../lib/pipeline/store.ts';
@@ -280,6 +282,27 @@ router.get('/clause-classifiers', async (c) => {
       default_model: LLAMA_DEFAULT_MODEL,
       models: (await gatewayModels()).filter((m) => LLAMA_MODEL_RE.test(m.id)),
     },
+  });
+});
+
+// GET /api/admin/prediction-catalog → what the predictions use: abstract fields, both clause taxonomies
+// (with SVM training data and quality), and which classifier each organization uses.
+router.get('/prediction-catalog', async (c) => {
+  const svm = await clauseSvmInfo();
+  const trained = new Map(svm.clause_types.map((ct) => [ct.id, ct.examples]));
+  const orgs = must(await db().from('organizations').select('id, name, clause_classifier, clause_model').order('name')) as
+    { id: string; name: string; clause_classifier: string; clause_model: string | null }[];
+  return c.json({
+    fields: ABSTRACT_FIELDS.map((f) => ({ key: f.key, label: f.label, kind: f.kind, group: f.group, lease_column: f.leaseColumn ?? null })),
+    lease_clauses: Object.entries(LEASE_CLAUSES).map(([id, name]) => ({
+      id, name, examples: trained.get(id) ?? 0, svm_f1: svm.metrics?.f1[id] ?? null,
+    })),
+    standard_clauses: [...CLAUSE_TYPES],
+    svm: {
+      trained_at: svm.trained_at, clause_types: svm.clause_types.length,
+      accuracy: svm.metrics?.accuracy ?? null, macro_f1: svm.metrics?.macro_f1 ?? null, cv_examples: svm.metrics?.examples ?? null,
+    },
+    orgs: orgs.map((o) => ({ id: o.id, name: o.name, classifier: o.clause_classifier, model: o.clause_model })),
   });
 });
 
