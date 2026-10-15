@@ -1,3 +1,5 @@
+import { MODEL_JSON } from './clause-svm-model.ts';
+
 // Local clause classifier: TF-IDF + linear SVM trained by API/scripts/svm-train.ts on API/svm/training_data,
 // labelled with the clause ids in API/svm/lease_clauses.json. Runs in-process (Node and Edge), no AI key needed.
 // The trainer imports termCounts/tfidf from here, so training and prediction share one feature pipeline.
@@ -84,11 +86,15 @@ export interface ClauseAbstract {
 
 let modelPromise: Promise<LoadedModel> | null = null;
 
-/** Lazily loads the ~3 MB model so routes that never classify don't pay for parsing it. */
+/**
+ * Parses the ~3 MB model on first use, so routes that never classify don't pay for it. The model is a static import of
+ * a generated .ts module (not a .json file or a dynamic import), because the Supabase Edge bundler only ships files it
+ * reaches through static imports.
+ */
 function loadModel(): Promise<LoadedModel> {
-  modelPromise ??= import('./clause-svm-model.json', { with: { type: 'json' } }).then(({ default: raw }) => {
-    const m = raw as unknown as SvmModel;
-    if (m.format !== MODEL_FORMAT) throw new Error(`clause-svm-model.json format ${m.format}, expected ${MODEL_FORMAT}`);
+  modelPromise ??= Promise.resolve().then(() => {
+    const m = JSON.parse(MODEL_JSON) as SvmModel;
+    if (m.format !== MODEL_FORMAT) throw new Error(`clause-svm-model.ts format ${m.format}, expected ${MODEL_FORMAT}`);
     return { raw: m, index: new Map(m.terms.map((t, i) => [t, i])) };
   });
   return modelPromise;

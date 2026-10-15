@@ -36,6 +36,11 @@ export interface FileWork {
   documents?: SplitDocument[];
   previous?: PreviousMapping[];
   touched_lease_ids?: string[];
+  /**
+   * Abstract results saved right after the AI call, by document index, until they are applied. A step that fails
+   * after the call (e.g. while linking or classifying clauses) reuses the result instead of paying for the call again.
+   */
+  abstracts?: Record<string, AbstractResult>;
 }
 
 export interface LeaseFileRow {

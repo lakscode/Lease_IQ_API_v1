@@ -18,7 +18,7 @@ export const env = {
   get maxUploadMb() { return Number(getEnv('MAX_UPLOAD_MB')) || 50; },
   get anthropicApiKey() { return getEnv('ANTHROPIC_API_KEY'); },
   /** Vercel AI Gateway key, for organizations whose clause classifier is 'gateway'. */
-  get aiGatewayApiKey() { return getEnv('AI_GATEWAY_API_KEY'); },
+  get aiGatewayApiKey() { return getEnv('AI_GATEWAY_API_KEY') || getEnv('VERCEL_AI_GATEWAY_API_KEY'); },
   get sendgridApiKey() { return getEnv('SENDGRID_API_KEY'); },
   get jira() {
     return {

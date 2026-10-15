@@ -37,7 +37,7 @@ export async function orgClauseClassifier(orgId: string): Promise<OrgClassifier>
   // Don't silently fall back to Claude: a missing column means migration 0202 has not been applied.
   if (error) throw new Error(`Could not read the organization's clause classifier (apply migrations 0201/0202): ${error.message}`);
   const value = data?.clause_classifier as ClauseClassifier | undefined;
-  const classifier = value && CLAUSE_CLASSIFIERS.includes(value) ? value : 'claude';
+  const classifier = value && CLAUSE_CLASSIFIERS.includes(value) ? value : 'svm'; // column default (migration 0203)
   return { classifier, model: classifier === 'gateway' ? ((data?.clause_model as string | null) ?? null) : null };
 }
 
@@ -97,7 +97,7 @@ export async function classifyDocumentClauses(doc: ClauseDoc, opts: {
   if (classifier === 'claude') {
     const clauses = opts.claudeClauses ?? await classifyClauses(
       { process: opts.process, orgId: doc.org_id, userId: opts.userId, fileId: doc.file_id, leaseId: doc.lease_id },
-      await documentInput(doc), opts.locale);
+      await documentInput(doc, { visual: false }), opts.locale);
     return { source: 'claude', count: await replaceClauses(doc.org_id, doc.id, doc.lease_id, clauses, 'claude', await getModel()) };
   }
   if (classifier === 'gateway' && model) {

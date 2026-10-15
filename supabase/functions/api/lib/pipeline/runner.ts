@@ -12,10 +12,10 @@ import { recomputeLease } from '../lease-terms.ts';
 import type { Locale } from '../types.ts';
 import * as ai from './ai-steps.ts';
 import {
-  chunkPages, extractPageTexts, fitsAiPdfLimits, isPdf, loadPdf, looksScanned, pagesNeedingOcr, subPdf,
+  chunkPages, extractPageTexts, fitsAiPdfLimits, hasUsableText, isPdf, loadPdf, looksScanned, pagePreview, pagesNeedingOcr, subPdf,
 } from './pdf.ts';
 import {
-  applyAbstract, documentInput, leaseCandidates, loadFilePageTexts, normalizeSplit, previousMapping,
+  aiMode, applyAbstract, documentInput, leaseCandidates, loadFilePageTexts, normalizeSplit, previousMapping,
   removeFileDocuments, resolveLease, savePageTexts, saveSplit,
 } from './store.ts';
 import type { FileWork, LeaseFileRow, PipelineStep, SplitDocument } from './types.ts';
@@ -104,6 +104,12 @@ function analysisProcess(file: LeaseFileRow): AiProcess {
 
 // ---- Step handlers --------------------------------------------------------------------------------
 
+function withoutKey<T>(record: Record<string, T> | undefined, key: string): Record<string, T> | undefined {
+  if (!record || !(key in record)) return record;
+  const { [key]: _drop, ...rest } = record;
+  return Object.keys(rest).length ? rest : undefined;
+}
+
 interface StepOutcome { detail: string; steps?: PipelineStep[]; work?: FileWork; patch?: Record<string, unknown> }
 
 async function stepPrepare(file: LeaseFileRow): Promise<StepOutcome> {
@@ -158,9 +164,13 @@ async function stepSplit(file: LeaseFileRow, aiImpl: PipelineAi): Promise<StepOu
   const bytes = await downloadBytes(file.storage_path);
   const total = file.page_count ?? (await loadPdf(bytes)).getPageCount();
   const locale = await uploaderLocale(file.uploaded_by);
-  const input: ai.DocumentInput = fitsAiPdfLimits(total, bytes.length)
-    ? { kind: 'pdf', bytes, title: file.file_name }
-    : { kind: 'text', pages: await loadFilePageTexts(file.id) };
+  // Economy mode: finding document boundaries only needs the start and end of each page, not the whole PDF.
+  const pageTexts = (await aiMode()) === 'economy' ? await loadFilePageTexts(file.id) : null;
+  const input: ai.DocumentInput = pageTexts && hasUsableText(pageTexts.map((p) => p.text))
+    ? { kind: 'text', pages: pageTexts.map((p) => ({ page: p.page, text: pagePreview(p.text) })) }
+    : fitsAiPdfLimits(total, bytes.length)
+      ? { kind: 'pdf', bytes, title: file.file_name }
+      : { kind: 'text', pages: await loadFilePageTexts(file.id) };
   const result = await aiImpl.splitFile(aiCtx(file, analysisProcess(file)), input, total, locale);
   return applySplitResult(file, normalizeSplit(result, total), bytes);
 }
@@ -172,13 +182,18 @@ export async function applySplitResult(file: LeaseFileRow, docs: SplitDocument[]
   const withoutOld = file.steps.filter((s) => !s.name.startsWith('abstract:'));
   const steps = insertSteps(withoutOld, 'finalize', order.map((d) => ({ name: `abstract:${d.index}`, status: 'pending' as const })));
   const summary = saved.map((d) => `${d.doc_type} p.${d.page_start}–${d.page_end}`).join(', ');
-  return { detail: `${saved.length} document(s): ${summary}`, steps, work: { ...file.work, documents: saved } };
+  return { detail: `${saved.length} document(s): ${summary}`, steps, work: { ...file.work, documents: saved, abstracts: undefined } };
 }
 
 async function stepAbstract(file: LeaseFileRow, name: string, aiImpl: PipelineAi): Promise<StepOutcome> {
   const index = Number(name.slice('abstract:'.length));
   const doc = (file.work.documents ?? []).find((d) => d.index === index);
   if (!doc?.document_id) throw new Error(`Document ${index} is missing; re-analyze the file.`);
+  const saved = file.work.abstracts?.[String(index)];
+  if (saved) {
+    await logStep(file, name, 'Reusing the saved AI result from the previous attempt (no new AI call).');
+    return applyAbstractResult(file, doc, saved);
+  }
   const row = must(await db().from('documents').select('id, storage_path, page_count, title').eq('id', doc.document_id).single(), 'load document') as {
     id: string; storage_path: string | null; page_count: number | null; title: string | null;
   };
@@ -188,12 +203,16 @@ async function stepAbstract(file: LeaseFileRow, name: string, aiImpl: PipelineAi
   const candidates = (await leaseCandidates(file.org_id)).map(({ main_document_id: _m, ...rest }) => rest);
   const locale = await uploaderLocale(file.uploaded_by);
   const { classifier } = await orgClauseClassifier(file.org_id);
+  const effort = (await aiMode()) === 'economy' ? 'medium' : 'high';
   const result = await aiImpl.abstractDocument(
     aiCtx(file, analysisProcess(file), file.target_lease_id),
     input,
-    { docType: doc.doc_type, title: doc.title, siblings, candidates, targetLeaseId: file.target_lease_id, classifyClauses: classifier === 'claude' },
+    { docType: doc.doc_type, title: doc.title, siblings, candidates, targetLeaseId: file.target_lease_id, classifyClauses: classifier === 'claude', effort },
     locale,
   );
+  // Save the paid-for result first, so a failure while applying it doesn't repeat the AI call on retry.
+  file.work = { ...file.work, abstracts: { ...(file.work.abstracts ?? {}), [String(index)]: result } };
+  await saveFile(file.id, { work: file.work });
   return applyAbstractResult(file, doc, result);
 }
 
@@ -213,7 +232,7 @@ export async function applyAbstractResult(file: LeaseFileRow, doc: SplitDocument
   const touched = [...new Set([...(file.work.touched_lease_ids ?? []), link.leaseId])];
   return {
     detail: `${doc.doc_type} p.${doc.page_start}–${doc.page_end} → lease ${link.leaseId.slice(0, 8)} (${link.reason}${link.created ? ', created' : ''}); ${clauses.count} clause(s) by ${clauses.source}${clauses.note ? ` — ${clauses.note}` : ''}`,
-    work: { ...file.work, touched_lease_ids: touched },
+    work: { ...file.work, touched_lease_ids: touched, abstracts: withoutKey(file.work.abstracts, String(doc.index)) },
   };
 }
 

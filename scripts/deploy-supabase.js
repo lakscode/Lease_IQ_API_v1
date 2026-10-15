@@ -31,6 +31,8 @@ const secrets = {
 for (const key of ['ANTHROPIC_API_KEY', 'AI_GATEWAY_API_KEY', 'SENDGRID_API_KEY', 'LOGS_API_TOKEN', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY', 'JIRA_ISSUE_TYPES']) {
   if (process.env[key]) secrets[key] = process.env[key];
 }
+// Accept the Vercel-prefixed name too; the function reads AI_GATEWAY_API_KEY.
+if (!secrets.AI_GATEWAY_API_KEY && process.env.VERCEL_AI_GATEWAY_API_KEY) secrets.AI_GATEWAY_API_KEY = process.env.VERCEL_AI_GATEWAY_API_KEY;
 
 function supabase(args) {
   console.log(`\n> supabase ${args.join(' ')}`);

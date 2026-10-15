@@ -17,6 +17,7 @@ import { signInProviders } from './me.ts';
 import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels } from '../lib/ai-gateway.ts';
 import { clauseSvmInfo } from '../lib/clause-svm.ts';
 import { CLAUSE_CLASSIFIERS, type ClauseClassifier } from '../lib/pipeline/clauses.ts';
+import { aiMode } from '../lib/pipeline/store.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', requireSuperAdmin);
@@ -29,6 +30,7 @@ router.get('/settings', async (c) => {
     default_model: DEFAULT_MODEL,
     models: SUPPORTED_MODELS,
     ai_configured: Boolean(env.anthropicApiKey),
+    ai_mode: await aiMode(),
     email: await getEmailSettings(),
     ...(await sendgridKeyStatus()),
     email_configured: await emailConfigured(),
@@ -40,6 +42,14 @@ router.put('/settings/ai-model', async (c) => {
   if (!model || !SUPPORTED_MODELS.some((m) => m.id === model)) throw badRequest('Unsupported model');
   await setSetting(SETTINGS.aiModel, model, c.get('user').id);
   return c.json({ ai_model: model });
+});
+
+// PUT /api/admin/settings/ai-mode { mode: 'economy' | 'quality' } — how much of each document Claude reads
+router.put('/settings/ai-mode', async (c) => {
+  const mode = str((await readJson(c)).mode);
+  if (mode !== 'economy' && mode !== 'quality') throw badRequest('Mode must be economy or quality');
+  await setSetting(SETTINGS.aiMode, mode, c.get('user').id);
+  return c.json({ ai_mode: mode });
 });
 
 router.put('/settings/email', async (c) => {
@@ -266,7 +276,7 @@ router.get('/clause-classifiers', async (c) => {
 /** Validate clause_classifier / clause_model from a request body (only the keys present). */
 function classifierUpdate(body: Record<string, unknown>, current?: { clause_classifier: string; clause_model: string | null }): Record<string, string | null> {
   if (!('clause_classifier' in body) && !('clause_model' in body)) return {};
-  const classifier = (str(body.clause_classifier) ?? current?.clause_classifier ?? 'claude') as ClauseClassifier;
+  const classifier = (str(body.clause_classifier) ?? current?.clause_classifier ?? 'svm') as ClauseClassifier;
   if (!CLAUSE_CLASSIFIERS.includes(classifier)) throw badRequest('Clause classifier must be claude, svm or gateway');
   if (classifier !== 'gateway') return { clause_classifier: classifier, clause_model: null };
   const model = 'clause_model' in body ? str(body.clause_model) : current?.clause_model ?? null;

@@ -3,6 +3,7 @@ import { db } from './supabase.ts';
 // app_settings keys
 export const SETTINGS = {
   aiModel: 'ai_model',             // string model id
+  aiMode: 'ai_mode',               // 'economy' | 'quality' — how much of each document Claude reads (pipeline/store.ts)
   email: 'email',                  // { provider: 'default' | 'sendgrid', from_name, from_email }
 } as const;
 

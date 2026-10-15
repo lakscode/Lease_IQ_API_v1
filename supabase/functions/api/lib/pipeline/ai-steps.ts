@@ -10,13 +10,22 @@ import { withPageMarkers } from './pdf.ts';
 /** What Claude reads: either the PDF itself or page texts with page markers. */
 export type DocumentInput =
   | { kind: 'pdf'; bytes: Uint8Array; title?: string }
-  | { kind: 'text'; pages: { page: number; text: string }[] };
+  | {
+      kind: 'text';
+      pages: { page: number; text: string }[];
+      /** Economy mode: a PDF of only these pages, so Claude can still see signatures and image-only pages. */
+      visual?: { bytes: Uint8Array; pages: number[] };
+    };
 
 function inputBlocks(input: DocumentInput, instruction: string): BetaContentBlockParam[] {
   if (input.kind === 'pdf') {
     return [pdfBlock(input.bytes, { title: input.title }), { type: 'text', text: instruction }];
   }
-  return [{ type: 'text', text: `${withPageMarkers(input.pages)}\n\n---\n\n${instruction}` }];
+  const text = `${withPageMarkers(input.pages)}\n\n---\n\n${instruction}`;
+  if (!input.visual?.pages.length) return [{ type: 'text', text }];
+  const note = `The attached PDF contains only page(s) ${input.visual.pages.join(', ')} of this document, as images ` +
+    '(for signatures, stamps and pages without text). The full text follows; all page numbers in your answer refer to the === PAGE n === markers.';
+  return [pdfBlock(input.visual.bytes, { title: 'Signature and image pages' }), { type: 'text', text: `${note}\n\n${text}` }];
 }
 
 const PAGE_NOTE =
@@ -157,6 +166,8 @@ export interface AbstractContext {
   targetLeaseId: string | null;
   /** False when the organization's clause classifier is not Claude (clauses are classified separately). */
   classifyClauses?: boolean;
+  /** Reasoning effort: 'medium' in economy mode, 'high' in quality mode. */
+  effort?: 'medium' | 'high';
 }
 
 export async function abstractDocument(ctx: AiContext, input: DocumentInput, info: AbstractContext, locale: Locale): Promise<AbstractResult> {
@@ -188,7 +199,7 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
       languageInstruction(locale),
     messages: [{ role: 'user', content: inputBlocks(input, instruction) }],
     jsonSchema: abstractSchema(withClauses),
-    effort: 'high',
+    effort: info.effort ?? 'high',
     maxTokens: 48000,
   });
   return { ...data, clauses: data.clauses ?? [], fields: fieldsRecord(data.fields) };

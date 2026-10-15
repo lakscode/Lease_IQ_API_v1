@@ -8,7 +8,7 @@ export const PDF_MAX_BYTES_FOR_AI = 30 * 1024 * 1024;
 /** Pages per OCR call. */
 export const OCR_CHUNK_PAGES = 20;
 /** A page with fewer extractable characters than this counts as "image only". */
-const MIN_PAGE_CHARS = 40;
+export const MIN_PAGE_CHARS = 40;
 
 export function isPdf(bytes: Uint8Array): boolean {
   // %PDF- may be preceded by a little junk; look in the first 1 KB.
@@ -86,6 +86,51 @@ export async function subPdf(source: PDFDocument | Uint8Array, start: number, en
   const pages = await out.copyPages(src, indices);
   pages.forEach((p) => out.addPage(p));
   return out.save();
+}
+
+/** New PDF with the given pages (1-based, any order; out-of-range pages are ignored). */
+export async function pickPages(source: PDFDocument | Uint8Array, pageNumbers: number[]): Promise<Uint8Array> {
+  const src = source instanceof Uint8Array ? await loadPdf(source) : source;
+  const total = src.getPageCount();
+  const indices = [...new Set(pageNumbers)].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b).map((p) => p - 1);
+  const out = await PDFDocument.create();
+  (await out.copyPages(src, indices)).forEach((p) => out.addPage(p));
+  return out.save();
+}
+
+/** Whether a document's page texts are good enough to send instead of the PDF (≥ 90% of pages have text). */
+export function hasUsableText(pageTexts: string[]): boolean {
+  if (!pageTexts.length) return false;
+  const ok = pageTexts.filter((t) => t.replace(/\s+/g, '').length >= MIN_PAGE_CHARS).length;
+  return ok / pageTexts.length >= 0.9;
+}
+
+const SIGNATURE_RE = /in witness whereof|signature|signed by|\bby:\s*_{3,}|_{10,}|\/s\/|docusign|adobe sign|notary|witness(?:es)?:/i;
+/** At most this many pages go to Claude as PDF in economy mode. */
+const MAX_VISUAL_PAGES = 6;
+
+/**
+ * Pages Claude should still see as images in economy mode: likely signature pages (ink signatures, DocuSign
+ * markers) and pages without a text layer (scanned inserts, site plans). The last page is always included.
+ */
+export function visualPages(pages: { page: number; text: string }[]): number[] {
+  if (!pages.length) return [];
+  const last = pages[pages.length - 1].page;
+  const imageOnly = pages.filter((p) => p.text.replace(/\s+/g, '').length < MIN_PAGE_CHARS).map((p) => p.page);
+  const signature = pages.filter((p) => SIGNATURE_RE.test(p.text)).map((p) => p.page);
+  const picked = new Set<number>([last]);
+  for (const p of [...signature.reverse(), ...imageOnly]) {
+    if (picked.size >= MAX_VISUAL_PAGES) break;
+    picked.add(p);
+  }
+  return [...picked].sort((a, b) => a - b);
+}
+
+/** Start and end of a page's text, for the split step (document boundaries show at page tops and bottoms). */
+export function pagePreview(text: string, head = 700, tail = 250): string {
+  const t = text.trim();
+  if (t.length <= head + tail + 40) return t;
+  return `${t.slice(0, head)}\n[… ${t.length - head - tail} characters omitted …]\n${t.slice(-tail)}`;
 }
 
 /** Whether a PDF of this size can be sent to Claude as a document block. */

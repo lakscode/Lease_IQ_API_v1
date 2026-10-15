@@ -1,4 +1,4 @@
-// Checks that the exported model (clause-svm-model.json) reproduces the trainer's reference predictions in svm/training_report.json,
+// Checks that the exported model (clause-svm-model.ts) reproduces the trainer's reference predictions in svm/training_report.json,
 // then runs a sample lease excerpt through clause abstraction. Usage: npm run svm:check [-- path/to/lease.txt]
 import { readFileSync } from 'node:fs';
 import { abstractClauses, predictClauses } from '../supabase/functions/api/lib/clause-svm.ts';

@@ -4,7 +4,8 @@ import { ABSTRACT_FIELDS, CLAUSE_TYPES, DOC_TYPES, coerceFieldValue } from '../a
 import { db, must } from '../supabase.ts';
 import { downloadBytes, removePaths, sha256Hex, uploadBytes } from '../storage.ts';
 import type { DocType } from '../types.ts';
-import { fitsAiPdfLimits, loadPdf, subPdf } from './pdf.ts';
+import { getSetting, SETTINGS } from '../settings.ts';
+import { fitsAiPdfLimits, hasUsableText, loadPdf, pickPages, subPdf, visualPages } from './pdf.ts';
 import type { DocumentInput } from './ai-steps.ts';
 import type {
   AbstractResult, ClauseResult, FileWork, LeaseFileRow, PreviousMapping, SignatureResult, SplitDocument, SplitResult,
@@ -153,8 +154,38 @@ export async function documentPages(documentId: string): Promise<{ page: number;
   return rows.map((r) => ({ page: r.page_number, text: r.text }));
 }
 
-/** The document's own PDF when it fits Claude's limits, otherwise its page texts. */
-export async function documentInput(doc: { id: string; storage_path: string | null; page_count: number | null; title?: string | null }): Promise<DocumentInput> {
+export type AiMode = 'economy' | 'quality';
+
+/**
+ * How much of each document Claude reads (super admin setting, default economy):
+ *   economy: page text, plus a PDF of only the signature / image-only pages; split sees page previews; abstract effort medium
+ *   quality: the whole PDF for every call; abstract effort high (about 3–5× the input tokens)
+ */
+export async function aiMode(): Promise<AiMode> {
+  return (await getSetting<string>(SETTINGS.aiMode, 'economy')) === 'quality' ? 'quality' : 'economy';
+}
+
+/**
+ * Claude input for a stored document. Economy mode (when the pages have text): the page texts plus, unless
+ * `visual` is false, a small PDF of the signature / image-only pages. Otherwise the document's PDF when it fits
+ * Claude's limits, or its page texts.
+ */
+export async function documentInput(
+  doc: { id: string; storage_path: string | null; page_count: number | null; title?: string | null },
+  opts: { visual?: boolean } = {},
+): Promise<DocumentInput> {
+  if ((await aiMode()) === 'economy') {
+    const pages = await documentPages(doc.id);
+    if (hasUsableText(pages.map((p) => p.text))) {
+      if (opts.visual === false || !doc.storage_path) return { kind: 'text', pages };
+      try {
+        const picked = visualPages(pages);
+        return { kind: 'text', pages, visual: { bytes: await pickPages(await downloadBytes(doc.storage_path), picked), pages: picked } };
+      } catch {
+        return { kind: 'text', pages };
+      }
+    }
+  }
   if (doc.storage_path) {
     try {
       const bytes = await downloadBytes(doc.storage_path);
