@@ -27,12 +27,28 @@ import imports from './routes/imports.ts';
 import clientErrors from './routes/client-errors.ts';
 import logs from './routes/logs.ts';
 import clauses from './routes/clauses.ts';
+import { log } from './lib/log.ts';
 
 /** Paths (relative to /api) that don't require a signed-in user. */
 const PUBLIC_PATHS = [/^\/?$/, /^\/health$/, /^\/status$/, /^\/config$/, /^\/invites\/preview\//, /^\/client-errors$/, /^\/logs$/];
 
 export function createApp() {
   const api = new Hono<AppEnv>();
+
+  // One log line per request: method, path, status, duration, user and organization.
+  api.use('*', async (c, next) => {
+    const started = Date.now();
+    await next();
+    if (c.req.method === 'OPTIONS') return;
+    const status = c.res.status;
+    const ctx = {
+      method: c.req.method, path: c.req.path, status, ms: Date.now() - started,
+      userId: (c.get('user') as { id?: string } | undefined)?.id ?? null,
+      orgId: (c.get('orgId') as string | undefined) ?? null,
+    };
+    // 5xx are logged as errors by errorResponse (with the cause); here only the access line.
+    log.info('http', `${c.req.method} ${c.req.path} ${status} ${ctx.ms}ms`, ctx);
+  });
 
   api.use('*', async (c, next) => {
     const sub = c.req.path.replace(/^\/api/, '') || '/';

@@ -3,6 +3,7 @@
 import { env } from './env.ts';
 import { getSecret, getSetting, SECRETS, SETTINGS } from './settings.ts';
 import { ApiError } from './http.ts';
+import { log } from './log.ts';
 
 export interface EmailSettings {
   provider: 'default' | 'sendgrid';
@@ -77,8 +78,10 @@ export async function sendEmail(msg: {
   });
   if (!res.ok) {
     const body = await res.text();
+    log.error('email', `SendGrid error ${res.status}`, { status: res.status, to: msg.to.length, subject: msg.subject.slice(0, 120), response: body.slice(0, 300) });
     throw new Error(`SendGrid error ${res.status}: ${body.slice(0, 300)}`);
   }
+  log.info('email', `Email sent: ${msg.subject.slice(0, 120)}`, { to: msg.to.length, attachments: msg.attachments?.length ?? 0 });
 }
 
 function escapeHtml(value: string): string {

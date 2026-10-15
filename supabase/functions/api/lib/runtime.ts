@@ -1,4 +1,5 @@
 // Runtime shims so the same code runs on Node (local, port 3000) and Supabase Edge Functions (Deno).
+import { errorFields, log } from './log.ts';
 
 type DenoLike = { env: { get(name: string): string | undefined } };
 type EdgeRuntimeLike = { waitUntil(promise: Promise<unknown>): void };
@@ -22,7 +23,7 @@ export function getEnv(name: string): string | undefined {
  * Node: the process stays up, so the promise simply continues.
  */
 export function runInBackground(task: () => Promise<unknown>): void {
-  const promise = task().catch((err) => console.error('[background]', err));
+  const promise = task().catch((err) => log.error('background', (err as Error)?.message || String(err), errorFields(err)));
   g.EdgeRuntime?.waitUntil(promise);
 }
 

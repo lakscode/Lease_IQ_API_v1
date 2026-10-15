@@ -3,6 +3,7 @@
 // Inputs   svm/training_data/*.xlsx   column A = clause text, column B = clause id ("__label__<id>" or bare "<id>")
 //          svm/lease_clauses.json     {clause id: clause name}; rows whose id is not listed are skipped
 // Outputs  supabase/functions/api/lib/clause-svm-model.ts     model used by lib/clause-svm.ts (Node + Edge; generated, don't edit)
+//          supabase/functions/api/lib/lease-clauses.ts        clause id → name map (also used by the LangChain classifier)
 //          svm/training_report.json                           cross-validated metrics, per-clause scores, skipped labels
 //
 // Features come from lib/clause-svm.ts (termCounts/tfidf), so training and prediction can't drift apart.
@@ -19,6 +20,7 @@ const DATA_DIR = join(API_DIR, 'svm', 'training_data');
 const CLAUSE_MAP = join(API_DIR, 'svm', 'lease_clauses.json');
 const MODEL_OUT = join(API_DIR, 'supabase', 'functions', 'api', 'lib', 'clause-svm-model.ts');
 const REPORT_OUT = join(API_DIR, 'svm', 'training_report.json');
+const CLAUSES_OUT = join(API_DIR, 'supabase', 'functions', 'api', 'lib', 'lease-clauses.ts');
 
 const MIN_DF = 2;
 const MAX_FEATURES = 15000;
@@ -318,6 +320,10 @@ const model: SvmModel = {
   weights,
 };
 writeFileSync(MODEL_OUT, modelModule(JSON.stringify(model)));
+writeFileSync(CLAUSES_OUT,
+  '// Generated from svm/lease_clauses.json by scripts/svm-train.ts (npm run svm:train). Do not edit.\n' +
+  '// Clause id → name: the taxonomy of the SVM and LangChain (Llama) clause classifiers.\n' +
+  `export const LEASE_CLAUSES: Record<string, string> = {\n${Object.entries(clauseMap).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)},\n`).join('')}};\n`);
 
 // Reference predictions from the in-memory model; svm:check confirms the exported JSON reproduces them.
 const random = rng(SEED + 1);

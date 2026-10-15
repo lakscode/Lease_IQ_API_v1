@@ -289,7 +289,7 @@ router.get('/:id/clauses', async (c) => {
 
 interface ClauseOut {
   id: string; document_id: string; document_title: string | null; doc_type: string | null; clause_type: string;
-  source: 'claude' | 'svm' | 'gateway'; model: string | null; confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
+  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama'; model: string | null; confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
   page: number | null; paragraph: number | null; line: number | null; text: string | null;
 }
 

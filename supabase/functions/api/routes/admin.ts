@@ -14,8 +14,10 @@ import { loadOrg, membersRouter, normalizeEmail, parseRole, removeMembers, addMe
 import { CURRENCIES, orgDataCounts } from '../lib/account-orgs.ts';
 import { applyDomainToExistingUsers, claimableDomain } from '../lib/account-domains.ts';
 import { signInProviders } from './me.ts';
-import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels } from '../lib/ai-gateway.ts';
+import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels, gatewayStatus } from '../lib/ai-gateway.ts';
 import { clauseSvmInfo } from '../lib/clause-svm.ts';
+import { LANGCHAIN_DEFAULT_MODEL } from '../lib/clause-langchain.ts';
+import { LLAMA_DEFAULT_MODEL, LLAMA_MODEL_RE } from '../lib/clause-llama.ts';
 import { CLAUSE_CLASSIFIERS, type ClauseClassifier } from '../lib/pipeline/clauses.ts';
 import { aiMode } from '../lib/pipeline/store.ts';
 
@@ -269,7 +271,15 @@ router.get('/clause-classifiers', async (c) => {
     classifiers: CLAUSE_CLASSIFIERS,
     claude: { configured: Boolean(env.anthropicApiKey), model: await getModel() },
     svm: { configured: true, trained_at: svm.trained_at, clause_types: svm.clause_types.length },
+    // Shared by gateway, langchain and llama: whether Vercel AI Gateway will serve requests (credit balance).
+    gateway_status: await gatewayStatus(),
     gateway: { configured: gatewayConfigured(), models: await gatewayModels() },
+    langchain: { configured: gatewayConfigured(), default_model: LANGCHAIN_DEFAULT_MODEL, models: await gatewayModels() },
+    llama: {
+      configured: gatewayConfigured(),
+      default_model: LLAMA_DEFAULT_MODEL,
+      models: (await gatewayModels()).filter((m) => LLAMA_MODEL_RE.test(m.id)),
+    },
   });
 });
 
@@ -277,7 +287,18 @@ router.get('/clause-classifiers', async (c) => {
 function classifierUpdate(body: Record<string, unknown>, current?: { clause_classifier: string; clause_model: string | null }): Record<string, string | null> {
   if (!('clause_classifier' in body) && !('clause_model' in body)) return {};
   const classifier = (str(body.clause_classifier) ?? current?.clause_classifier ?? 'svm') as ClauseClassifier;
-  if (!CLAUSE_CLASSIFIERS.includes(classifier)) throw badRequest('Clause classifier must be claude, svm or gateway');
+  if (!CLAUSE_CLASSIFIERS.includes(classifier)) throw badRequest('Clause classifier must be claude, svm, gateway, langchain or llama');
+  if (classifier === 'langchain') {
+    const model = ('clause_model' in body ? str(body.clause_model) : current?.clause_model) ?? LANGCHAIN_DEFAULT_MODEL;
+    if (!GATEWAY_MODEL_RE.test(model)) throw badRequest('Choose a Vercel AI Gateway model for LangChain, e.g. "openai/gpt-5.4-mini"');
+    return { clause_classifier: classifier, clause_model: model.slice(0, 120) };
+  }
+  if (classifier === 'llama') {
+    const given = 'clause_model' in body ? str(body.clause_model) : current?.clause_model;
+    const model = given && LLAMA_MODEL_RE.test(given) ? given : given ? null : LLAMA_DEFAULT_MODEL;
+    if (!model) throw badRequest('Choose a Llama model, e.g. "meta/llama-4-scout"');
+    return { clause_classifier: classifier, clause_model: model.slice(0, 120) };
+  }
   if (classifier !== 'gateway') return { clause_classifier: classifier, clause_model: null };
   const model = 'clause_model' in body ? str(body.clause_model) : current?.clause_model ?? null;
   if (!model || !GATEWAY_MODEL_RE.test(model)) throw badRequest('Choose a Vercel AI Gateway model, e.g. "openai/gpt-5"');

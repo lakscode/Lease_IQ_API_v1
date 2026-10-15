@@ -1,4 +1,5 @@
 import { db } from './supabase.ts';
+import { log } from './log.ts';
 
 export type AccessAction =
   | 'upload' | 'view' | 'download' | 'report_download' | 'save' | 'email' | 'edit' | 'verify' | 'delete';
@@ -22,5 +23,5 @@ export async function logAccess(entry: {
     file_id: entry.fileId ?? null,
     details: entry.details ?? null,
   });
-  if (error) console.error('access_log insert failed:', error.message);
+  if (error) log.error('access_log', `access_log insert failed: ${error.message}`);
 }

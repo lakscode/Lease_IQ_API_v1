@@ -14,6 +14,7 @@ import {
 } from '../lib/pipeline/runner.ts';
 import { allDocuments, rebuildAllClauses, rebuildSearch, recheckSignature } from '../lib/pipeline/maintenance.ts';
 import type { LeaseFileRow } from '../lib/pipeline/types.ts';
+import { errorFields, log } from '../lib/log.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', withOrg);
@@ -276,7 +277,7 @@ router.post('/:id/signatures', requireRole('editor'), async (c) => {
       try {
         await recheckSignature(d.id, file.org_id, profile.id, profile.locale);
       } catch (err) {
-        console.error('[signatures]', d.id, (err as Error).message);
+        log.error('signatures', `Signature re-check failed for document ${d.id}: ${(err as Error).message}`, { documentId: d.id, ...errorFields(err) });
       }
     }
   });

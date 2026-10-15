@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import type { Context } from 'hono';
+import { errorFields, log } from './log.ts';
 
 export type ErrorCode =
   | 'bad_request'
@@ -42,13 +43,21 @@ export const notFound = (what = 'Resource') => new ApiError('not_found', `${what
 export const forbidden = (message = 'You do not have permission to do this') => new ApiError('forbidden', message);
 
 export function errorResponse(err: Error, c: Context) {
+  const ctx = {
+    method: c.req.method,
+    path: c.req.path,
+    userId: (c.get('user') as { id?: string } | undefined)?.id ?? null,
+    email: (c.get('user') as { email?: string } | undefined)?.email ?? null,
+  };
   if (err instanceof ApiError) {
+    // Server-side ApiErrors (not configured, internal) are worth seeing; 4xx are normal client errors.
+    if (err.status >= 500) log.warn('api.error', err.message, { ...ctx, code: err.code, status: err.status });
     return c.json({ error: err.message, code: err.code }, err.status);
   }
   if (err instanceof HTTPException) {
     return c.json({ error: err.message, code: 'bad_request' }, err.status);
   }
-  console.error(err);
+  log.error('api.unhandled', err?.message || 'Unhandled error', { ...ctx, code: 'internal', ...errorFields(err) });
   return c.json({ error: 'Internal server error', code: 'internal' }, 500);
 }
 

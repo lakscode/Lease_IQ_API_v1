@@ -20,6 +20,7 @@ import {
 } from './store.ts';
 import type { FileWork, LeaseFileRow, PipelineStep, SplitDocument } from './types.ts';
 import { classifyDocumentClauses, orgClauseClassifier } from './clauses.ts';
+import { errorFields, log } from '../log.ts';
 
 /** How long a worker owns a file per step (a crashed worker's lock expires after this). */
 export const LOCK_MS = 7 * 60_000;
@@ -50,7 +51,9 @@ async function saveFile(fileId: string, patch: Partial<LeaseFileRow> & Record<st
 
 export async function logStep(file: { id: string; org_id: string }, step: string | null, message: string, level: 'info' | 'warn' | 'error' = 'info'): Promise<void> {
   const { error } = await db().from('processing_logs').insert({ org_id: file.org_id, file_id: file.id, step, level, message: message.slice(0, 4000) });
-  if (error) console.error('processing_logs insert failed:', error.message);
+  if (error) log.error('pipeline.log', `processing_logs insert failed: ${error.message}`, { fileId: file.id, step });
+  // Step failures are logged separately as errors (with the cause) by runFile.
+  log[level === 'warn' ? 'warn' : 'info']('pipeline', message.slice(0, 500), { fileId: file.id, orgId: file.org_id, step });
 }
 
 /** Take the file's lock if it is free (or expired). Returns false when another worker holds it. */
@@ -322,6 +325,7 @@ export async function runFile(fileId: string, opts: { budgetMs?: number; maxStep
         step.detail = message;
         await saveFile(fileId, { status: 'failed', error: message, steps: file.steps });
         await logStep(file, step.name, message, 'error');
+        log.error('pipeline.step', `Step ${step.name} failed: ${message}`, { fileId, orgId: file.org_id, step: step.name, ...errorFields(err) });
         return 'failed';
       }
     }

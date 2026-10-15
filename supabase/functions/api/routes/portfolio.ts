@@ -16,6 +16,7 @@ import {
 import {
   hasRenewalOption, loadPortfolioContext, marketRateFor, noticeBy, renewalStatus, scoreLease, type PortfolioContext,
 } from '../lib/analytics-risk.ts';
+import { log } from '../lib/log.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', withOrg);
@@ -158,7 +159,7 @@ async function analyse(orgId: string) {
   await Promise.all(
     changed.map(async (r) => {
       const { error } = await db().from('leases').update({ risk_score: r.score, risk_reasons: r.reasons }).eq('id', r.lease.id).eq('org_id', orgId);
-      if (error) console.error('risk score update failed:', error.message);
+      if (error) log.error('portfolio.risk', `Risk score update failed: ${error.message}`);
       r.lease.risk_score = r.score;
       r.lease.risk_reasons = r.reasons;
     }),

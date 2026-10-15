@@ -1,5 +1,6 @@
 import { db } from './supabase.ts';
 import { env } from './env.ts';
+import { log } from './log.ts';
 
 // Storage layout in the private `leases` bucket (all paths start with the org id):
 //   {org}/files/{file_id}/{safe-name}.pdf      original upload
@@ -29,7 +30,7 @@ export async function removePaths(paths: string[], bucket = env.storageBucket): 
   const list = paths.filter(Boolean);
   if (!list.length) return;
   const { error } = await db().storage.from(bucket).remove(list);
-  if (error) console.error('storage remove failed:', error.message);
+  if (error) log.warn('storage', `Storage remove failed: ${error.message}`);
 }
 
 export async function signedUrl(path: string, seconds = 300, download?: string): Promise<string> {

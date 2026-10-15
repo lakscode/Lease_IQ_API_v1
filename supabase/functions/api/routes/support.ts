@@ -6,6 +6,7 @@ import type { AppEnv } from '../lib/types.ts';
 import { env } from '../lib/env.ts';
 import { getEnv } from '../lib/runtime.ts';
 import { ApiError, badRequest, readJson, str } from '../lib/http.ts';
+import { log } from '../lib/log.ts';
 
 const router = new Hono<AppEnv>();
 
@@ -22,7 +23,7 @@ function issueTypes(): Record<TicketType, string> {
     for (const t of TYPES) if (typeof parsed[t] === 'string' && parsed[t]) out[t] = parsed[t] as string;
     return out;
   } catch {
-    console.error('JIRA_ISSUE_TYPES is not valid JSON; using defaults');
+    log.warn('support.jira', 'JIRA_ISSUE_TYPES is not valid JSON; using defaults');
     return DEFAULT_ISSUE_TYPES;
   }
 }
@@ -114,7 +115,7 @@ router.post('/tickets', async (c) => {
   if (!res.ok && reporterId && res.status === 400) res = await create(fields);
   if (!res.ok) {
     const detail = await res.text();
-    console.error('Jira create issue failed', res.status, detail.slice(0, 500));
+    log.error('support.jira', `Jira create issue failed (${res.status})`, { status: res.status, response: detail.slice(0, 500) });
     throw new ApiError('bad_request', `Jira rejected the ticket (${res.status}). Check the Jira project and issue type settings.`);
   }
   const created = (await res.json()) as { id: string; key: string };

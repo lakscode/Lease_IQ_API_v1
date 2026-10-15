@@ -6,6 +6,7 @@ import { publicLogoUrl } from '../lib/storage.ts';
 import { ApiError, badRequest, readJson } from '../lib/http.ts';
 import { applyDomainJoin, provisionOrgIfNone } from '../lib/account-domains.ts';
 import { logError } from '../lib/error-log.ts';
+import { errorFields, log } from '../lib/log.ts';
 
 const router = new Hono<AppEnv>();
 
@@ -64,7 +65,7 @@ router.get('/', async (c) => {
     const joined = await applyDomainJoin(user);
     if (joined && !profile.default_org_id) profile = { ...profile, default_org_id: joined };
   } catch (err) {
-    console.error('domain join failed:', (err as Error).message);
+    log.error('signup.domain_join', `Domain join failed: ${(err as Error).message}`, errorFields(err));
   }
   // No organization yet: create one from the email domain (idempotent; never blocks sign-in).
   if (!profile.is_super_admin) {

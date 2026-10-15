@@ -7,6 +7,7 @@ import { checkSignatures } from './ai-steps.ts';
 import { classifyDocumentClauses } from './clauses.ts';
 import { extractPageTexts } from './pdf.ts';
 import { documentInput, signatureRecord } from './store.ts';
+import { errorFields, log } from '../log.ts';
 
 interface DocRow {
   id: string;
@@ -57,7 +58,7 @@ export async function rebuildAllClauses(docs: DocRow[], userId: string | null, l
     try {
       await reclassifyClauses(doc, userId, locale);
     } catch (err) {
-      console.error(`[rebuild-clauses] ${doc.id}:`, (err as Error).message);
+      log.error('maintenance.rebuild_clauses', `Re-classify failed for document ${doc.id}: ${(err as Error).message}`, { documentId: doc.id, orgId: doc.org_id, ...errorFields(err) });
       if ((err as { code?: string }).code === 'ai_not_configured') unconfigured.add(doc.org_id);
     }
   }
@@ -87,7 +88,7 @@ export async function rebuildSearch(budgetMs = 240_000): Promise<{ pages: number
       pages += rows.length;
       documents += 1;
     } catch (err) {
-      console.error(`[rebuild-search] ${doc.id}:`, (err as Error).message);
+      log.error('maintenance.rebuild_search', `Search rebuild failed for document ${doc.id}: ${(err as Error).message}`, { documentId: doc.id, ...errorFields(err) });
     }
   }
   return { pages, documents };

@@ -11,6 +11,7 @@ import { ApiError } from './http.ts';
 import { db } from './supabase.ts';
 import { getSetting, SETTINGS } from './settings.ts';
 import type { Locale } from './types.ts';
+import { errorFields, log } from './log.ts';
 
 export const SUPPORTED_MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', note: 'Default. Best quality for lease abstraction.' },
@@ -79,23 +80,37 @@ export async function callClaude(ctx: AiContext, req: ClaudeRequest): Promise<Be
   const model = req.model ?? (await getModel());
   const started = Date.now();
 
-  const stream = anthropic.beta.messages.stream({
-    model,
-    max_tokens: req.maxTokens ?? 32000,
-    system: req.system,
-    messages: req.messages,
-    output_config: {
-      effort: req.effort ?? 'medium',
-      ...(req.jsonSchema ? { format: { type: 'json_schema' as const, schema: req.jsonSchema } } : {}),
-    },
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-  });
-  const message = await stream.finalMessage();
+  const where = { process: ctx.process, model, orgId: ctx.orgId, fileId: ctx.fileId ?? null, leaseId: ctx.leaseId ?? null, userId: ctx.userId };
+  log.info('ai.claude', `Claude call started (${ctx.process})`, where);
+  let message: BetaMessage;
+  try {
+    const stream = anthropic.beta.messages.stream({
+      model,
+      max_tokens: req.maxTokens ?? 32000,
+      system: req.system,
+      messages: req.messages,
+      output_config: {
+        effort: req.effort ?? 'medium',
+        ...(req.jsonSchema ? { format: { type: 'json_schema' as const, schema: req.jsonSchema } } : {}),
+      },
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+    });
+    message = await stream.finalMessage();
+  } catch (err) {
+    log.error('ai.claude', `Claude call failed (${ctx.process}): ${(err as Error)?.message}`, { ...where, ms: Date.now() - started, ...errorFields(err) });
+    throw err;
+  }
 
   await recordUsage(ctx, message.model || model, message.usage, Date.now() - started);
+  log.info('ai.claude', `Claude call done (${ctx.process})`, {
+    ...where, model: message.model || model, ms: Date.now() - started, stop: message.stop_reason,
+    inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens,
+  });
+  if (message.stop_reason === 'max_tokens') log.warn('ai.claude', `Claude output cut off at max_tokens (${ctx.process})`, where);
 
   if (message.stop_reason === 'refusal') {
+    log.warn('ai.claude', `Claude declined the request (${ctx.process})`, where);
     throw new ApiError('bad_request', 'The AI model declined to process this request.');
   }
   return message;
@@ -142,7 +157,7 @@ async function recordUsage(
     lease_id: ctx.leaseId ?? null,
     conversation_id: ctx.conversationId ?? null,
   });
-  if (error) console.error('ai_usage insert failed:', error.message);
+  if (error) log.error('ai.usage', `ai_usage insert failed: ${error.message}`, { process: ctx.process, model });
 }
 
 /** Base64 PDF document block (place before the text block in user content). */

@@ -320,11 +320,14 @@ export function signatureRecord(sig: SignatureResult | null | undefined): Record
   };
 }
 
-/** Which classifier produced a clause: Claude AI or a Vercel AI Gateway model (CLAUSE_TYPES), or the local SVM (lease_clauses.json names). */
-export type ClauseSource = 'claude' | 'svm' | 'gateway';
+/**
+ * Which classifier produced a clause: Claude AI or a Vercel AI Gateway model (CLAUSE_TYPES names), or the local SVM,
+ * LangChain or Llama (lease_clauses.json names).
+ */
+export type ClauseSource = 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama';
 
 export function clauseRows(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude', model: string | null = null) {
-  const known = (type: string) => source === 'svm' || CLAUSE_SET.has(type);
+  const known = (type: string) => source === 'svm' || source === 'langchain' || source === 'llama' || CLAUSE_SET.has(type);
   return clauses
     .filter((c) => c && c.clause_type)
     .map((c) => ({
