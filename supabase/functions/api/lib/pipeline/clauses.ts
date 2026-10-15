@@ -33,7 +33,9 @@ const SVM_MIN_CONFIDENCE = 0.5;
 const SECTION_RE = /^\s*(?:(?:ARTICLE|Article|SECTION|Section|§)\s+([\dIVXLC]+(?:\.\d+)*)|(\d{1,2}(?:\.\d{1,3})+|\d{1,2})[.)]\s)/;
 
 export async function orgClauseClassifier(orgId: string): Promise<OrgClassifier> {
-  const { data } = await db().from('organizations').select('clause_classifier, clause_model').eq('id', orgId).maybeSingle();
+  const { data, error } = await db().from('organizations').select('clause_classifier, clause_model').eq('id', orgId).maybeSingle();
+  // Don't silently fall back to Claude: a missing column means migration 0202 has not been applied.
+  if (error) throw new Error(`Could not read the organization's clause classifier (apply migrations 0201/0202): ${error.message}`);
   const value = data?.clause_classifier as ClauseClassifier | undefined;
   const classifier = value && CLAUSE_CLASSIFIERS.includes(value) ? value : 'claude';
   return { classifier, model: classifier === 'gateway' ? ((data?.clause_model as string | null) ?? null) : null };
