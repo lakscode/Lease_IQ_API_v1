@@ -10,7 +10,9 @@
     "db:migrate": "node scripts/migrate.mjs",
     "users:create": "node scripts/create-users.js",
     "deploy:supabase": "node scripts/deploy-supabase.js",
-    "seed:demo": "node scripts/seed-demo.ts"
+    "seed:demo": "node scripts/seed-demo.ts",
+    "svm:train": "python svm/train_svm.py",
+    "svm:check": "node scripts/svm-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.129.0",

@@ -19,6 +19,7 @@ import {
   removeFileDocuments, resolveLease, savePageTexts, saveSplit,
 } from './store.ts';
 import type { FileWork, LeaseFileRow, PipelineStep, SplitDocument } from './types.ts';
+import { classifyDocumentSvmSafe } from './svm-clauses.ts';
 
 /** How long a worker owns a file per step (a crashed worker's lock expires after this). */
 export const LOCK_MS = 7 * 60_000;
@@ -199,11 +200,12 @@ async function stepAbstract(file: LeaseFileRow, name: string, aiImpl: PipelineAi
 export async function applyAbstractResult(file: LeaseFileRow, doc: SplitDocument, result: Parameters<typeof applyAbstract>[2]): Promise<StepOutcome> {
   const link = await resolveLease(file, file.work, doc, result.link ?? null);
   const { clauses } = await applyAbstract(file, doc, result, link.leaseId);
+  const svmClauses = doc.document_id ? await classifyDocumentSvmSafe(file.org_id, doc.document_id, link.leaseId) : 0;
   // Keep the lease's terms current as each document lands (finalize recomputes again).
   await recomputeLease(link.leaseId);
   const touched = [...new Set([...(file.work.touched_lease_ids ?? []), link.leaseId])];
   return {
-    detail: `${doc.doc_type} p.${doc.page_start}–${doc.page_end} → lease ${link.leaseId.slice(0, 8)} (${link.reason}${link.created ? ', created' : ''}); ${clauses} clause(s)`,
+    detail: `${doc.doc_type} p.${doc.page_start}–${doc.page_end} → lease ${link.leaseId.slice(0, 8)} (${link.reason}${link.created ? ', created' : ''}); ${clauses} clause(s), ${svmClauses} SVM clause(s)`,
     work: { ...file.work, touched_lease_ids: touched },
   };
 }

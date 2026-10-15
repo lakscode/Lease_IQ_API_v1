@@ -289,16 +289,21 @@ export function signatureRecord(sig: SignatureResult | null | undefined): Record
   };
 }
 
-export function clauseRows(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[]) {
+/** Which classifier produced a clause: Claude AI (CLAUSE_TYPES) or the local SVM (lease_clauses.json names). */
+export type ClauseSource = 'claude' | 'svm';
+
+export function clauseRows(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude') {
+  const known = (type: string) => source === 'svm' || CLAUSE_SET.has(type);
   return clauses
     .filter((c) => c && c.clause_type)
     .map((c) => ({
       org_id: orgId,
       document_id: documentId,
       lease_id: leaseId,
-      clause_type: CLAUSE_SET.has(c.clause_type) ? c.clause_type : 'Miscellaneous',
+      source,
+      clause_type: known(c.clause_type) ? c.clause_type : 'Miscellaneous',
       confidence: Number.isFinite(Number(c.confidence)) ? Math.max(0, Math.min(1, Number(c.confidence))) : null,
-      alt_types: (c.alternatives ?? []).filter((a) => CLAUSE_SET.has(a.type) && a.type !== c.clause_type).slice(0, 3)
+      alt_types: (c.alternatives ?? []).filter((a) => known(a.type) && a.type !== c.clause_type).slice(0, 3)
         .map((a) => ({ type: a.type, confidence: Math.max(0, Math.min(1, Number(a.confidence) || 0)) })),
       section: c.section ?? null,
       page: Number.isInteger(c.page) ? c.page : null,
@@ -308,9 +313,10 @@ export function clauseRows(orgId: string, documentId: string, leaseId: string | 
     }));
 }
 
-export async function replaceClauses(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[]): Promise<number> {
-  must(await db().from('clauses').delete().eq('document_id', documentId), 'delete clauses');
-  const rows = clauseRows(orgId, documentId, leaseId, clauses);
+/** Replace a document's clauses from one source (the other source's clauses are kept). */
+export async function replaceClauses(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude'): Promise<number> {
+  must(await db().from('clauses').delete().eq('document_id', documentId).eq('source', source), 'delete clauses');
+  const rows = clauseRows(orgId, documentId, leaseId, clauses, source);
   for (let i = 0; i < rows.length; i += 200) must(await db().from('clauses').insert(rows.slice(i, i + 200)), 'insert clauses');
   return rows.length;
 }

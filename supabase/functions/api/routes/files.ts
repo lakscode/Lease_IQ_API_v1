@@ -131,8 +131,8 @@ router.get('/', async (c) => {
 
 // ---- Maintenance (super admins) — registered before /:id routes ---------------------------------
 
+// Without an AI key only the local SVM clauses are rebuilt.
 router.post('/maintenance/rebuild-clauses', requireSuperAdmin, async (c) => {
-  if (!aiConfigured()) throw new ApiError('ai_not_configured', 'AI is not configured. Set ANTHROPIC_API_KEY on the API.');
   const docs = (await allDocuments()).filter((d) => d.storage_path || d.page_count);
   const profile = c.get('profile');
   runInBackground(() => rebuildAllClauses(docs, profile.id, profile.locale));

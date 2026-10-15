@@ -6,6 +6,7 @@ import type { Locale } from '../types.ts';
 import { checkSignatures, classifyClauses } from './ai-steps.ts';
 import { extractPageTexts } from './pdf.ts';
 import { documentInput, replaceClauses, signatureRecord } from './store.ts';
+import { classifyDocumentSvm } from './svm-clauses.ts';
 
 interface DocRow {
   id: string;
@@ -29,8 +30,9 @@ export async function recheckSignature(documentId: string, orgId: string, userId
   return record;
 }
 
-/** Re-classify the clauses of one document (process 'reanalysis'). Returns the clause count. */
+/** Re-classify the clauses of one document: local SVM, then Claude (process 'reanalysis'). Returns the Claude clause count. */
 export async function reclassifyClauses(doc: DocRow, userId: string | null, locale: Locale): Promise<number> {
+  await classifyDocumentSvm(doc.org_id, doc.id, doc.lease_id);
   const ctx: AiContext = { process: 'reanalysis', orgId: doc.org_id, userId, fileId: doc.file_id, leaseId: doc.lease_id };
   const clauses = await classifyClauses(ctx, await documentInput(doc), locale);
   return replaceClauses(doc.org_id, doc.id, doc.lease_id, clauses);
@@ -47,13 +49,16 @@ export async function allDocuments(): Promise<DocRow[]> {
   return out;
 }
 
+/** Re-classify every document. The SVM pass always runs; the Claude pass stops once AI turns out to be unconfigured. */
 export async function rebuildAllClauses(docs: DocRow[], userId: string | null, locale: Locale): Promise<void> {
+  let aiAvailable = true;
   for (const doc of docs) {
     try {
-      await reclassifyClauses(doc, userId, locale);
+      if (aiAvailable) await reclassifyClauses(doc, userId, locale);
+      else await classifyDocumentSvm(doc.org_id, doc.id, doc.lease_id);
     } catch (err) {
       console.error(`[rebuild-clauses] ${doc.id}:`, (err as Error).message);
-      if ((err as { code?: string }).code === 'ai_not_configured') return;
+      if ((err as { code?: string }).code === 'ai_not_configured') aiAvailable = false;
     }
   }
 }

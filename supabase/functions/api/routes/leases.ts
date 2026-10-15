@@ -289,7 +289,7 @@ router.get('/:id/clauses', async (c) => {
 
 interface ClauseOut {
   id: string; document_id: string; document_title: string | null; doc_type: string | null; clause_type: string;
-  confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
+  source: 'claude' | 'svm'; confidence: number | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
   page: number | null; paragraph: number | null; line: number | null; text: string | null;
 }
 
@@ -297,7 +297,7 @@ async function groupedClauses(orgId: string, leaseId: string): Promise<{ clause_
   const docs = must(await db().from('documents').select('id, title, doc_type, page_start').eq('org_id', orgId).eq('lease_id', leaseId), 'docs') as { id: string; title: string | null; doc_type: string }[];
   if (!docs.length) return [];
   const rows = must(await db().from('clauses')
-    .select('id, document_id, clause_type, confidence, alt_types, section, page, paragraph, line, text')
+    .select('id, document_id, clause_type, source, confidence, alt_types, section, page, paragraph, line, text')
     .eq('org_id', orgId).in('document_id', docs.map((d) => d.id)), 'clauses') as Omit<ClauseOut, 'document_title' | 'doc_type'>[];
   const byId = new Map(docs.map((d) => [d.id, d]));
   const order = new Map<string, number>(CLAUSE_TYPES.map((t, i) => [t, i]));
@@ -487,15 +487,17 @@ router.post('/:id/report/email', async (c) => {
   return c.json({ ok: true, sent: to.length });
 });
 
-// POST /api/leases/:id/report/saved { destination, name? } → log a cloud save done by the browser
+// POST /api/leases/:id/report/saved { destination, name?, url? } → log a cloud save done by the browser
 router.post('/:id/report/saved', async (c) => {
   const leaseId = c.req.param('id');
   await loadLease(c, leaseId);
   const body = await readJson(c);
   const destination = str(body.destination);
   if (!destination || !['google_drive', 'onedrive', 'sharepoint'].includes(destination)) throw badRequest('Invalid destination');
-  await logAccess({ orgId: c.get('orgId'), userId: c.get('user').id, action: 'save', leaseId, details: { destination, name: str(body.name) } });
-  return c.json({ ok: true });
+  const url = str(body.url);
+  const link = url && /^https:\/\//i.test(url) && url.length <= 2000 ? url : null;
+  await logAccess({ orgId: c.get('orgId'), userId: c.get('user').id, action: 'save', leaseId, details: { destination, name: str(body.name), url: link } });
+  return c.json({ ok: true, url: link });
 });
 
 export default router;
