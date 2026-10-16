@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono';
 import type { AppEnv, LeaseStatus } from '../lib/types.ts';
 import { requireRole, withOrg } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
-import { ApiError, badRequest, readJson, str } from '../lib/http.ts';
+import { ApiError, badRequest, forbidden, readJson, str } from '../lib/http.ts';
 import { ABSTRACT_FIELDS, CLAUSE_TYPES, coerceFieldValue } from '../lib/abstract.ts';
 import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
 import { computeAlerts, noticeByDate, recomputeLease, sortFamily, type FamilyDocument, type TermValue } from '../lib/lease-terms.ts';
@@ -217,6 +217,107 @@ router.get('/:id/documents/:docId/pages', async (c) => {
   const doc = await loadDoc(c, leaseId, c.req.param('docId'));
   const pages = must(await db().from('document_pages').select('page_number, text').eq('document_id', doc.id).eq('org_id', doc.org_id).order('page_number'), 'pages');
   return c.json({ document_id: doc.id, page_start: doc.page_start, pages });
+});
+
+// ---- PDF notes (text selected on a page, with a note) ----------------------------------------------
+
+const NOTE_COLORS = ['yellow', 'green', 'blue', 'pink'];
+const NOTE_COLUMNS = 'id, document_id, page, quote, rects, color, body, created_by, created_at, updated_at, author:profiles!document_notes_profile_fk(email, display_name)';
+
+interface NoteRow {
+  id: string; document_id: string; page: number; quote: string | null; rects: unknown; color: string; body: string;
+  created_by: string | null; created_at: string; updated_at: string;
+  author: { email: string | null; display_name: string | null } | null;
+}
+
+function noteOut(r: NoteRow) {
+  const { author, ...rest } = r;
+  return { ...rest, author: author?.display_name || author?.email || null };
+}
+
+/** Highlight rectangles, normalized to the page (0..1). At most 200; anything malformed is rejected. */
+function noteRects(v: unknown): { x: number; y: number; w: number; h: number }[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > 200) throw badRequest('Invalid highlight');
+  const unit = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= -0.01 && n <= 1.01;
+  return v.map((r) => {
+    const { x, y, w, h } = (r ?? {}) as Record<string, unknown>;
+    if (![x, y, w, h].every(unit)) throw badRequest('Invalid highlight');
+    const round = (n: number) => Math.round(Math.min(1, Math.max(0, n)) * 10000) / 10000;
+    return { x: round(x as number), y: round(y as number), w: round(w as number), h: round(h as number) };
+  });
+}
+
+function noteBody(v: unknown): string {
+  const body = str(v);
+  if (!body) throw badRequest('Write a note.');
+  if (body.length > 5000) throw badRequest('Notes can be at most 5,000 characters.');
+  return body;
+}
+
+async function loadNote(c: Ctx, leaseId: string, noteId: string): Promise<NoteRow> {
+  if (!UUID_RE.test(noteId)) throw new ApiError('not_found', 'Note not found');
+  const { data, error } = await db().from('document_notes').select(NOTE_COLUMNS).eq('id', noteId).eq('org_id', c.get('orgId')).eq('lease_id', leaseId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new ApiError('not_found', 'Note not found');
+  return data as unknown as NoteRow;
+}
+
+/** Notes can be changed by their author or an admin. */
+function assertNoteOwner(c: Ctx, note: NoteRow) {
+  if (note.created_by !== c.get('user').id && c.get('role') !== 'admin') throw forbidden('Only the author or an admin can change this note.');
+}
+
+// GET /api/leases/:id/documents/:docId/notes
+router.get('/:id/documents/:docId/notes', async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const doc = await loadDoc(c, leaseId, c.req.param('docId'));
+  const rows = must(await db().from('document_notes').select(NOTE_COLUMNS).eq('document_id', doc.id).eq('org_id', doc.org_id)
+    .order('page').order('created_at'), 'notes') as unknown as NoteRow[];
+  return c.json(rows.map(noteOut));
+});
+
+// POST /api/leases/:id/documents/:docId/notes { page, quote?, rects?, color?, body }
+router.post('/:id/documents/:docId/notes', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const doc = await loadDoc(c, leaseId, c.req.param('docId'));
+  const body = await readJson(c);
+  const page = Number(body.page);
+  if (!Number.isInteger(page) || page < 1 || (doc.page_count && page > doc.page_count)) throw badRequest('Invalid page');
+  const color = str(body.color) ?? 'yellow';
+  if (!NOTE_COLORS.includes(color)) throw badRequest('Invalid color');
+  const row = must(await db().from('document_notes').insert({
+    org_id: doc.org_id, lease_id: leaseId, document_id: doc.id, page,
+    quote: str(body.quote)?.slice(0, 2000) ?? null, rects: noteRects(body.rects), color, body: noteBody(body.body),
+    created_by: c.get('user').id,
+  }).select(NOTE_COLUMNS).single(), 'note') as unknown as NoteRow;
+  return c.json(noteOut(row), 201);
+});
+
+// PATCH /api/leases/:id/notes/:noteId { body?, color? }
+router.patch('/:id/notes/:noteId', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  const note = await loadNote(c, leaseId, c.req.param('noteId'));
+  assertNoteOwner(c, note);
+  const body = await readJson(c);
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (body.body !== undefined) update.body = noteBody(body.body);
+  if (body.color !== undefined) {
+    if (!NOTE_COLORS.includes(String(body.color))) throw badRequest('Invalid color');
+    update.color = body.color;
+  }
+  const row = must(await db().from('document_notes').update(update).eq('id', note.id).select(NOTE_COLUMNS).single(), 'note') as unknown as NoteRow;
+  return c.json(noteOut(row));
+});
+
+// DELETE /api/leases/:id/notes/:noteId
+router.delete('/:id/notes/:noteId', requireRole('editor'), async (c) => {
+  const note = await loadNote(c, c.req.param('id'), c.req.param('noteId'));
+  assertNoteOwner(c, note);
+  must(await db().from('document_notes').delete().eq('id', note.id), 'delete note');
+  return c.json({ ok: true });
 });
 
 // PATCH /api/leases/:id/documents/:docId/abstract { field, value }
