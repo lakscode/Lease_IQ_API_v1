@@ -36,6 +36,9 @@ interface FileDocSummary {
   page_end: number | null;
   tenant_name: string | null;
   premises_address: string | null;
+  /** The lease's current (as amended) expiration date and status. */
+  expiration_date: string | null;
+  lease_status: string | null;
 }
 
 interface TokenRun {
@@ -63,13 +66,14 @@ async function listFiles(orgId: string, fileIds?: string[]) {
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     const rows = must(await db().from('documents')
-      .select('id, file_id, doc_type, title, lease_id, page_start, page_end, lease:leases!documents_lease_id_fkey(tenant_name, premises_address)')
-      .in('file_id', chunk).order('page_start'), 'list documents') as unknown as (Omit<FileDocSummary, 'tenant_name' | 'premises_address'> & {
-      lease: { tenant_name: string | null; premises_address: string | null } | null;
+      .select('id, file_id, doc_type, title, lease_id, page_start, page_end, lease:leases!documents_lease_id_fkey(tenant_name, premises_address, expiration_date, status)')
+      .in('file_id', chunk).order('page_start'), 'list documents') as unknown as (Omit<FileDocSummary, 'tenant_name' | 'premises_address' | 'expiration_date' | 'lease_status'> & {
+      lease: { tenant_name: string | null; premises_address: string | null; expiration_date: string | null; status: string | null } | null;
     })[];
     for (const r of rows) {
       docs.push({ id: r.id, file_id: r.file_id, doc_type: r.doc_type, title: r.title, lease_id: r.lease_id, page_start: r.page_start, page_end: r.page_end,
-        tenant_name: r.lease?.tenant_name ?? null, premises_address: r.lease?.premises_address ?? null });
+        tenant_name: r.lease?.tenant_name ?? null, premises_address: r.lease?.premises_address ?? null,
+        expiration_date: r.lease?.expiration_date ?? null, lease_status: r.lease?.status ?? null });
     }
     const u = must(await db().from('ai_usage')
       .select('file_id, process, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens')
