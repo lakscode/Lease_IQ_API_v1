@@ -202,8 +202,54 @@ router.get('/', async (c) => {
     if (s) q = q.or(`tenant_name.ilike.%${s}%,landlord_name.ilike.%${s}%,premises_address.ilike.%${s}%`);
   }
   const rows = must(await q, 'leases') as unknown as (LeaseRow & { documents: { count: number }[] })[];
-  return c.json(rows.map((r) => listItem(r, r.documents?.[0]?.count ?? 0)));
+  const parents = await leaseParents(orgId);
+  return c.json(rows.map((r) => ({ ...listItem(r, r.documents?.[0]?.count ?? 0), parent_lease_id: parents.get(r.id) ?? null })));
 });
+
+/**
+ * Parent ("first") lease of leases that came out of the same upload: a lease created from a file uploaded with
+ * "Add amendment" belongs under that file's target lease, and leases created from one split PDF belong under the
+ * first lease of that file (by page order). Chains resolve to the top-level lease. Leases without a parent are absent.
+ */
+async function leaseParents(orgId: string): Promise<Map<string, string>> {
+  const docs = must(await db().from('documents').select('lease_id, file_id, page_start').eq('org_id', orgId).not('lease_id', 'is', null).not('file_id', 'is', null), 'documents') as
+    { lease_id: string; file_id: string; page_start: number | null }[];
+  const fileIds = [...new Set(docs.map((d) => d.file_id))];
+  const targets = new Map<string, string | null>();
+  for (let i = 0; i < fileIds.length; i += 200) {
+    const files = must(await db().from('lease_files').select('id, target_lease_id').eq('org_id', orgId).in('id', fileIds.slice(i, i + 200)), 'files') as { id: string; target_lease_id: string | null }[];
+    for (const f of files) targets.set(f.id, f.target_lease_id);
+  }
+
+  // Leases of each file, in page order (first page of their first document in the file).
+  const byFile = new Map<string, Map<string, number>>();
+  for (const d of docs) {
+    const leases = byFile.get(d.file_id) ?? new Map<string, number>();
+    leases.set(d.lease_id, Math.min(leases.get(d.lease_id) ?? Infinity, d.page_start ?? Infinity));
+    byFile.set(d.file_id, leases);
+  }
+
+  const direct = new Map<string, string>();
+  for (const [fileId, leases] of byFile) {
+    const target = targets.get(fileId) ?? null;
+    const ordered = [...leases.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+    const head = target ?? ordered[0];
+    for (const id of ordered) if (id !== head && !direct.has(id)) direct.set(id, head);
+  }
+
+  // Resolve chains to the top-level lease (guarding against cycles).
+  const parents = new Map<string, string>();
+  for (const id of direct.keys()) {
+    let top = direct.get(id)!;
+    const seen = new Set([id]);
+    while (direct.has(top) && !seen.has(top)) {
+      seen.add(top);
+      top = direct.get(top)!;
+    }
+    if (top !== id) parents.set(id, top);
+  }
+  return parents;
+}
 
 // GET /api/leases/:id
 router.get('/:id', async (c) => {
