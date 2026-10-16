@@ -403,15 +403,16 @@ interface EditedClause {
 const clauseKey = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 /**
- * Replace all of a document's clauses with the output of one classifier. Clauses a user edited (type, verified,
- * removed) keep those edits when the new output has a clause with the same text.
+ * Replace a document's predicted clauses with the output of one classifier. Clauses a user edited (type, verified,
+ * removed) keep those edits when the new output has a clause with the same text. Clauses a user added (source
+ * 'user') are left alone.
  */
 export async function replaceClauses(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude', model: string | null = null): Promise<number> {
   const edited = must(await db().from('clauses')
     .select('text, clause_type, original_clause_type, verified, dismissed, edited_by, edited_at')
-    .eq('document_id', documentId).not('edited_at', 'is', null), 'load edited clauses') as EditedClause[];
+    .eq('document_id', documentId).neq('source', 'user').not('edited_at', 'is', null), 'load edited clauses') as EditedClause[];
   const edits = new Map(edited.map((e) => [clauseKey(e.text), e]));
-  must(await db().from('clauses').delete().eq('document_id', documentId), 'delete clauses');
+  must(await db().from('clauses').delete().eq('document_id', documentId).neq('source', 'user'), 'delete clauses');
   // Every row carries every edit column: a bulk insert fills columns missing from some rows with NULL, not the default.
   const unedited = { original_clause_type: null, verified: false, dismissed: false, edited_by: null, edited_at: null };
   const rows = clauseRows(orgId, documentId, leaseId, clauses, source, model).map((r) => {

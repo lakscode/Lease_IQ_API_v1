@@ -549,20 +549,73 @@ router.patch('/:id/clauses/:clauseId', requireRole('editor'), async (c) => {
   return c.json({ id: clause.id, changed: true, ...update });
 });
 
+// POST /api/leases/:id/documents/:docId/clauses { clause_type, text, page, rects?, section? }
+// A clause a user marked on the PDF (source 'user'): verified, kept across re-classification, recorded as 'add'.
+router.post('/:id/documents/:docId/clauses', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const doc = await loadDoc(c, leaseId, c.req.param('docId'));
+  const body = await readJson(c);
+  const type = str(body.clause_type);
+  if (!type || !EDITABLE_TYPES.has(type)) throw badRequest('Choose a clause type from the list');
+  const text = str(body.text);
+  if (!text) throw badRequest('Select the clause text in the document.');
+  const page = Number(body.page);
+  if (!Number.isInteger(page) || page < 1 || (doc.page_count && page > doc.page_count)) throw badRequest('Invalid page');
+  const userId = c.get('user').id;
+  const now = new Date().toISOString();
+  const row = must(await db().from('clauses').insert({
+    org_id: doc.org_id, document_id: doc.id, lease_id: leaseId, source: 'user', model: null,
+    clause_type: type, confidence: null, alt_types: null, section: str(body.section)?.slice(0, 120) ?? null,
+    page, paragraph: null, line: null, text: text.slice(0, 4000), rects: noteRects(body.rects),
+    verified: true, dismissed: false, original_clause_type: null, created_by: userId, edited_by: userId, edited_at: now,
+  }).select('id').single(), 'add clause') as { id: string };
+  must(await db().from('clause_edits').insert({
+    org_id: doc.org_id, document_id: doc.id, lease_id: leaseId, clause_id: row.id, clause_text: text.slice(0, 300),
+    action: 'add', old_value: null, new_value: type, edited_by: userId, edited_at: now,
+  }), 'record clause edit');
+  await logAccess({ orgId: doc.org_id, userId, action: 'edit', leaseId, documentId: doc.id, details: { clause_id: row.id, added: type } });
+  return c.json({ id: row.id }, 201);
+});
+
+// DELETE /api/leases/:id/clauses/:clauseId → only clauses a user added (predictions are removed with PATCH dismissed).
+router.delete('/:id/clauses/:clauseId', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const orgId = c.get('orgId');
+  const clauseId = c.req.param('clauseId');
+  const clause = UUID_RE.test(clauseId)
+    ? must(await db().from('clauses').select('id, document_id, lease_id, source, clause_type, text').eq('id', clauseId).eq('org_id', orgId).maybeSingle(), 'load clause') as
+      { id: string; document_id: string; lease_id: string | null; source: string; clause_type: string; text: string | null } | null
+    : null;
+  if (!clause || clause.lease_id !== leaseId) throw new ApiError('not_found', 'Clause not found');
+  if (clause.source !== 'user') throw badRequest('Only clauses added by a user can be deleted. Remove predicted clauses instead.');
+  must(await db().from('clauses').delete().eq('id', clause.id), 'delete clause');
+  const userId = c.get('user').id;
+  must(await db().from('clause_edits').insert({
+    org_id: orgId, document_id: clause.document_id, lease_id: leaseId, clause_id: clause.id, clause_text: (clause.text ?? '').slice(0, 300),
+    action: 'delete', old_value: clause.clause_type, new_value: null, edited_by: userId, edited_at: new Date().toISOString(),
+  }), 'record clause edit');
+  return c.json({ ok: true });
+});
+
 interface ClauseOut {
   id: string; document_id: string; document_title: string | null; doc_type: string | null; clause_type: string;
-  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama'; model: string | null; confidence: number | null;
+  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama' | 'user'; model: string | null; confidence: number | null;
   original_clause_type: string | null; verified: boolean; dismissed: boolean; edited_at: string | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
   page: number | null; paragraph: number | null; line: number | null; text: string | null;
+  rects: { x: number; y: number; w: number; h: number }[] | null; created_by: string | null; created_by_name?: string | null;
 }
 
 async function groupedClauses(orgId: string, leaseId: string, includeDismissed = false): Promise<{ clause_type: string; clauses: ClauseOut[] }[]> {
   const docs = must(await db().from('documents').select('id, title, doc_type, page_start').eq('org_id', orgId).eq('lease_id', leaseId), 'docs') as { id: string; title: string | null; doc_type: string }[];
   if (!docs.length) return [];
   const rows = must(await db().from('clauses')
-    .select('id, document_id, clause_type, source, model, confidence, alt_types, section, page, paragraph, line, text, original_clause_type, verified, dismissed, edited_at')
+    .select('id, document_id, clause_type, source, model, confidence, alt_types, section, page, paragraph, line, text, original_clause_type, verified, dismissed, edited_at, rects, created_by')
     .eq('org_id', orgId).in('document_id', docs.map((d) => d.id)), 'clauses') as Omit<ClauseOut, 'document_title' | 'doc_type'>[];
   if (!includeDismissed) rows.splice(0, rows.length, ...rows.filter((r) => !r.dismissed));
+  const names = await userNames(rows.filter((r) => r.source === 'user').map((r) => r.created_by));
+  for (const r of rows) r.created_by_name = r.created_by ? names.get(r.created_by) ?? null : null;
   const byId = new Map(docs.map((d) => [d.id, d]));
   const order = new Map<string, number>(CLAUSE_TYPES.map((t, i) => [t, i]));
   const groups = new Map<string, ClauseOut[]>();
