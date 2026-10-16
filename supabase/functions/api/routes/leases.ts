@@ -9,6 +9,8 @@ import { ABSTRACT_FIELDS, CLAUSE_TYPES, coerceFieldValue } from '../lib/abstract
 import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
 import { computeAlerts, noticeByDate, recomputeLease, sortFamily, type FamilyDocument, type TermValue } from '../lib/lease-terms.ts';
 import { logAccess } from '../lib/access-log.ts';
+import { followUpAlerts } from '../lib/lease-followups.ts';
+import { log } from '../lib/log.ts';
 import { downloadBytes, publicLogoUrl, sha256Hex, signedUrl } from '../lib/storage.ts';
 import { escapeHtml, renderEmail, sendEmail } from '../lib/email.ts';
 import { toBase64 } from '../lib/ai.ts';
@@ -144,18 +146,35 @@ async function fileNameMap(fileIds: string[]): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.id, r.file_name]));
 }
 
+/** Alerts for open tasks and expiring supporting documents. Never fails the lease detail (e.g. before migration 0208). */
+async function followUps(orgId: string, leaseId: string) {
+  const [tasks, atts] = await Promise.all([
+    db().from('lease_tasks').select('title, due_date').eq('org_id', orgId).eq('lease_id', leaseId).eq('done', false),
+    db().from('attachments').select('file_name, category, ai_review').eq('org_id', orgId).eq('lease_id', leaseId),
+  ]);
+  if (tasks.error) log.warn('leases', `Tasks unavailable: ${tasks.error.message}`);
+  if (atts.error) log.warn('leases', `Attachments unavailable: ${atts.error.message}`);
+  return followUpAlerts({
+    tasks: (tasks.data ?? []) as { title: string; due_date: string | null }[],
+    attachments: (atts.data ?? []) as { file_name: string; category: string | null; ai_review: { key_date?: string | null; fields?: Record<string, string> } | null }[],
+  });
+}
+
 async function leaseDetail(c: Ctx, id: string) {
   const orgId = c.get('orgId');
   const lease = await loadLease(c, id);
   const docs = await leaseDocuments(orgId, id);
   const fileIds = [...new Set(docs.map((d) => d.file_id).filter((v): v is string => Boolean(v)))];
   const terms = (lease.current_terms ?? {}) as Record<string, TermValue>;
-  const alerts = computeAlerts({
-    status: lease.status,
-    terms,
-    hasMainLease: docs.some((d) => d.doc_type === 'main_lease'),
-    failedFiles: await failedFilesFor(orgId, id, fileIds),
-  });
+  const alerts = [
+    ...computeAlerts({
+      status: lease.status,
+      terms,
+      hasMainLease: docs.some((d) => d.doc_type === 'main_lease'),
+      failedFiles: await failedFilesFor(orgId, id, fileIds),
+    }),
+    ...(await followUps(orgId, id)),
+  ];
   const names = await fileNameMap(fileIds);
   return {
     lease: { ...listItem(lease, docs.length), current_terms: terms },
@@ -317,6 +336,95 @@ router.delete('/:id/notes/:noteId', requireRole('editor'), async (c) => {
   const note = await loadNote(c, c.req.param('id'), c.req.param('noteId'));
   assertNoteOwner(c, note);
   must(await db().from('document_notes').delete().eq('id', note.id), 'delete note');
+  return c.json({ ok: true });
+});
+
+// ---- Tasks (follow-ups; open ones that are overdue or due soon become alerts) ----------------------
+
+const TASK_COLUMNS = 'id, lease_id, title, due_date, done, done_at, attachment_id, created_by, created_at, attachment:attachments(file_name), creator:profiles!lease_tasks_profile_fk(email, display_name)';
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+interface TaskRow {
+  id: string; lease_id: string; title: string; due_date: string | null; done: boolean; done_at: string | null;
+  attachment_id: string | null; created_by: string | null; created_at: string;
+  attachment: { file_name: string } | null;
+  creator: { email: string | null; display_name: string | null } | null;
+}
+
+function taskOut(r: TaskRow) {
+  const { attachment, creator, ...rest } = r;
+  return { ...rest, attachment_name: attachment?.file_name ?? null, created_by_name: creator?.display_name || creator?.email || null };
+}
+
+function taskTitle(v: unknown): string {
+  const title = str(v);
+  if (!title) throw badRequest('Enter a task.');
+  return title.slice(0, 300);
+}
+
+function taskDue(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'string' || !DATE_ONLY_RE.test(v) || Number.isNaN(Date.parse(v))) throw badRequest('Enter a date as YYYY-MM-DD.');
+  return v;
+}
+
+async function loadTask(c: Ctx, leaseId: string, taskId: string): Promise<{ id: string }> {
+  if (!UUID_RE.test(taskId)) throw new ApiError('not_found', 'Task not found');
+  const { data, error } = await db().from('lease_tasks').select('id').eq('id', taskId).eq('org_id', c.get('orgId')).eq('lease_id', leaseId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new ApiError('not_found', 'Task not found');
+  return data as { id: string };
+}
+
+// GET /api/leases/:id/tasks → open tasks first (by due date), then done ones
+router.get('/:id/tasks', async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const rows = must(await db().from('lease_tasks').select(TASK_COLUMNS).eq('org_id', c.get('orgId')).eq('lease_id', leaseId)
+    .order('done').order('due_date', { nullsFirst: false }).order('created_at'), 'tasks') as unknown as TaskRow[];
+  return c.json(rows.map(taskOut));
+});
+
+// POST /api/leases/:id/tasks { title, due_date?, attachment_id? }
+router.post('/:id/tasks', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  await loadLease(c, leaseId);
+  const orgId = c.get('orgId');
+  const body = await readJson(c);
+  const attachmentId = str(body.attachment_id);
+  if (attachmentId) {
+    const att = UUID_RE.test(attachmentId)
+      ? must(await db().from('attachments').select('id').eq('id', attachmentId).eq('org_id', orgId).eq('lease_id', leaseId).maybeSingle(), 'attachment')
+      : null;
+    if (!att) throw badRequest('Unknown supporting document');
+  }
+  const row = must(await db().from('lease_tasks').insert({
+    org_id: orgId, lease_id: leaseId, title: taskTitle(body.title), due_date: taskDue(body.due_date),
+    attachment_id: attachmentId, created_by: c.get('user').id,
+  }).select(TASK_COLUMNS).single(), 'task') as unknown as TaskRow;
+  return c.json(taskOut(row), 201);
+});
+
+// PATCH /api/leases/:id/tasks/:taskId { title?, due_date?, done? }
+router.patch('/:id/tasks/:taskId', requireRole('editor'), async (c) => {
+  const leaseId = c.req.param('id');
+  const task = await loadTask(c, leaseId, c.req.param('taskId'));
+  const body = await readJson(c);
+  const update: Record<string, unknown> = {};
+  if (body.title !== undefined) update.title = taskTitle(body.title);
+  if (body.due_date !== undefined) update.due_date = taskDue(body.due_date);
+  if (body.done !== undefined) {
+    update.done = body.done === true;
+    update.done_at = body.done === true ? new Date().toISOString() : null;
+  }
+  const row = must(await db().from('lease_tasks').update(update).eq('id', task.id).select(TASK_COLUMNS).single(), 'task') as unknown as TaskRow;
+  return c.json(taskOut(row));
+});
+
+// DELETE /api/leases/:id/tasks/:taskId
+router.delete('/:id/tasks/:taskId', requireRole('editor'), async (c) => {
+  const task = await loadTask(c, c.req.param('id'), c.req.param('taskId'));
+  must(await db().from('lease_tasks').delete().eq('id', task.id), 'delete task');
   return c.json({ ok: true });
 });
 
