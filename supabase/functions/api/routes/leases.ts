@@ -16,6 +16,9 @@ import { escapeHtml, renderEmail, sendEmail } from '../lib/email.ts';
 import { toBase64 } from '../lib/ai.ts';
 import { recheckSignature } from '../lib/pipeline/maintenance.ts';
 import { buildLeaseReport, type ReportInput } from '../lib/pdf-report.ts';
+import {
+  aiReviewCheck, buildReview, loadReviewRow, reviewStatuses, saveReviewRow, withVerdict, type ReviewClause, type ReviewDoc, type ReviewRow,
+} from '../lib/lease-review.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', withOrg);
@@ -202,18 +205,28 @@ router.get('/', async (c) => {
     if (s) q = q.or(`tenant_name.ilike.%${s}%,landlord_name.ilike.%${s}%,premises_address.ilike.%${s}%`);
   }
   const rows = must(await q, 'leases') as unknown as (LeaseRow & { documents: { count: number }[] })[];
-  const parents = await leaseParents(orgId);
-  return c.json(rows.map((r) => ({ ...listItem(r, r.documents?.[0]?.count ?? 0), parent_lease_id: parents.get(r.id) ?? null })));
+  const [parents, reviews] = await Promise.all([leaseParents(orgId), reviewStatuses(orgId)]);
+  return c.json(rows.map((r) => ({
+    ...listItem(r, r.documents?.[0]?.count ?? 0),
+    parent_lease_id: parents.get(r.id) ?? null,
+    review: reviews.get(r.id) ?? null,
+  })));
 });
 
+/** Tenant name for grouping: case, punctuation and spacing ignored. */
+const tenantKey = (name: string | null) => (name ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
 /**
- * Parent ("first") lease of leases that came out of the same upload: a lease created from a file uploaded with
- * "Add amendment" belongs under that file's target lease, and leases created from one split PDF belong under the
- * first lease of that file (by page order). Chains resolve to the top-level lease. Leases without a parent are absent.
+ * Lease families for the list: leases of the same tenant, plus leases that came out of the same upload (a file
+ * uploaded with "Add amendment" and its target lease; leases split from one PDF). In each family the "first" lease
+ * is the parent of the others: the one with a main lease, then the earliest commencement, then the oldest.
+ * Returns child → parent; top-level leases are absent.
  */
 async function leaseParents(orgId: string): Promise<Map<string, string>> {
-  const docs = must(await db().from('documents').select('lease_id, file_id, page_start').eq('org_id', orgId).not('lease_id', 'is', null).not('file_id', 'is', null), 'documents') as
-    { lease_id: string; file_id: string; page_start: number | null }[];
+  const leases = must(await db().from('leases').select('id, tenant_name, main_document_id, commencement_date, created_at').eq('org_id', orgId), 'leases') as
+    { id: string; tenant_name: string | null; main_document_id: string | null; commencement_date: string | null; created_at: string }[];
+  const docs = must(await db().from('documents').select('lease_id, file_id').eq('org_id', orgId).not('lease_id', 'is', null).not('file_id', 'is', null), 'documents') as
+    { lease_id: string; file_id: string }[];
   const fileIds = [...new Set(docs.map((d) => d.file_id))];
   const targets = new Map<string, string | null>();
   for (let i = 0; i < fileIds.length; i += 200) {
@@ -221,32 +234,47 @@ async function leaseParents(orgId: string): Promise<Map<string, string>> {
     for (const f of files) targets.set(f.id, f.target_lease_id);
   }
 
-  // Leases of each file, in page order (first page of their first document in the file).
-  const byFile = new Map<string, Map<string, number>>();
+  // Union-find over leases.
+  const known = new Set(leases.map((l) => l.id));
+  const up = new Map<string, string>();
+  const find = (id: string): string => {
+    let root = id;
+    while (up.has(root)) root = up.get(root)!;
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    if (!known.has(a) || !known.has(b)) return;
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) up.set(rb, ra);
+  };
+
+  const byTenant = new Map<string, string>();
+  for (const l of leases) {
+    const key = tenantKey(l.tenant_name);
+    if (!key) continue;
+    if (byTenant.has(key)) union(byTenant.get(key)!, l.id);
+    else byTenant.set(key, l.id);
+  }
+  const firstOfFile = new Map<string, string>();
   for (const d of docs) {
-    const leases = byFile.get(d.file_id) ?? new Map<string, number>();
-    leases.set(d.lease_id, Math.min(leases.get(d.lease_id) ?? Infinity, d.page_start ?? Infinity));
-    byFile.set(d.file_id, leases);
+    const target = targets.get(d.file_id);
+    if (target) union(target, d.lease_id);
+    if (firstOfFile.has(d.file_id)) union(firstOfFile.get(d.file_id)!, d.lease_id);
+    else firstOfFile.set(d.file_id, d.lease_id);
   }
 
-  const direct = new Map<string, string>();
-  for (const [fileId, leases] of byFile) {
-    const target = targets.get(fileId) ?? null;
-    const ordered = [...leases.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
-    const head = target ?? ordered[0];
-    for (const id of ordered) if (id !== head && !direct.has(id)) direct.set(id, head);
-  }
-
-  // Resolve chains to the top-level lease (guarding against cycles).
+  // Pick each family's first lease.
+  const families = new Map<string, typeof leases>();
+  for (const l of leases) families.set(find(l.id), [...(families.get(find(l.id)) ?? []), l]);
   const parents = new Map<string, string>();
-  for (const id of direct.keys()) {
-    let top = direct.get(id)!;
-    const seen = new Set([id]);
-    while (direct.has(top) && !seen.has(top)) {
-      seen.add(top);
-      top = direct.get(top)!;
-    }
-    if (top !== id) parents.set(id, top);
+  for (const members of families.values()) {
+    if (members.length < 2) continue;
+    const [head] = [...members].sort((a, b) =>
+      Number(!a.main_document_id) - Number(!b.main_document_id)
+      || (a.commencement_date ?? '9999').localeCompare(b.commencement_date ?? '9999')
+      || a.created_at.localeCompare(b.created_at));
+    for (const m of members) if (m.id !== head.id) parents.set(m.id, head.id);
   }
   return parents;
 }
@@ -676,6 +704,81 @@ async function groupedClauses(orgId: string, leaseId: string, includeDismissed =
       clauses: list.sort((a, b) => (a.document_title ?? '').localeCompare(b.document_title ?? '') || (a.page ?? 0) - (b.page ?? 0)),
     }));
 }
+
+// ---- Review ----------------------------------------------------------------------------------------
+// Checks that the basic fields and expected clauses (lib/review-checklist.json) were predicted, plus reviewer verdicts.
+
+async function reviewInputs(orgId: string, lease: LeaseRow) {
+  const docs = await leaseDocuments(orgId, lease.id);
+  const clauses = docs.length
+    ? (must(await db().from('clauses').select('id, document_id, clause_type, source, confidence, page, text, verified')
+      .eq('org_id', orgId).in('document_id', docs.map((d) => d.id)).eq('dismissed', false), 'clauses') as ReviewClause[])
+      .map((r) => ({ ...r, confidence: asNumber(r.confidence) }))
+    : [];
+  return { docs: docs as ReviewDoc[], clauses, terms: (lease.current_terms ?? {}) as Record<string, TermValue> };
+}
+
+async function reviewPayload(orgId: string, lease: LeaseRow, row?: ReviewRow | null) {
+  const inputs = await reviewInputs(orgId, lease);
+  const saved = row === undefined ? await loadReviewRow(orgId, lease.id) : row;
+  const userIds = [saved?.started_by ?? null, saved?.completed_by ?? null,
+    ...Object.values(saved?.items?.fields ?? {}).map((v) => v.by), ...Object.values(saved?.items?.clauses ?? {}).map((v) => v.by)];
+  return buildReview({ ...inputs, row: saved, names: await userNames(userIds) });
+}
+
+/** Saves the row's summary (shown in the leases list) from a freshly built payload. */
+async function withSummary(orgId: string, lease: LeaseRow, row: ReviewRow, userId: string) {
+  const payload = await reviewPayload(orgId, lease, row);
+  const { issues, reviewed, total, correct, incorrect } = payload.summary;
+  await saveReviewRow(orgId, lease.id, userId, { summary: { issues, reviewed, total, correct, incorrect } });
+  return payload;
+}
+
+// GET /api/leases/:id/review → checklist items with predictions, automatic checks, AI check and verdicts
+router.get('/:id/review', async (c) => {
+  const lease = await loadLease(c, c.req.param('id'));
+  return c.json(await reviewPayload(c.get('orgId'), lease));
+});
+
+// PUT /api/leases/:id/review/items { kind: field|clause, key, verdict|null, note? } → review payload
+router.put('/:id/review/items', requireRole('editor'), async (c) => {
+  const lease = await loadLease(c, c.req.param('id'));
+  const orgId = c.get('orgId');
+  const userId = c.get('user').id;
+  const body = await readJson(c);
+  const existing = await loadReviewRow(orgId, lease.id);
+  if (existing?.status === 'completed') throw badRequest('This review is completed. Reopen it to make changes.');
+  const items = withVerdict(existing?.items, { kind: body.kind, key: body.key, verdict: body.verdict, note: body.note }, userId);
+  const row = await saveReviewRow(orgId, lease.id, userId, { items });
+  return c.json(await withSummary(orgId, lease, row, userId));
+});
+
+// POST /api/leases/:id/review/ai-check → asks Claude to compare predictions with the documents; review payload
+router.post('/:id/review/ai-check', requireRole('editor'), async (c) => {
+  const lease = await loadLease(c, c.req.param('id'));
+  const orgId = c.get('orgId');
+  const profile = c.get('profile');
+  if ((await loadReviewRow(orgId, lease.id))?.status === 'completed') throw badRequest('This review is completed. Reopen it to run the AI check.');
+  const inputs = await reviewInputs(orgId, lease);
+  if (!inputs.docs.length) throw badRequest('This lease has no documents to check.');
+  const ai = await aiReviewCheck({ process: 'reanalysis', orgId, userId: profile.id, leaseId: lease.id }, { ...inputs, locale: profile.locale });
+  const row = await saveReviewRow(orgId, lease.id, profile.id, { ai });
+  return c.json(await withSummary(orgId, lease, row, profile.id));
+});
+
+// POST /api/leases/:id/review/complete { reopen?: boolean } → review payload
+router.post('/:id/review/complete', requireRole('editor'), async (c) => {
+  const lease = await loadLease(c, c.req.param('id'));
+  const orgId = c.get('orgId');
+  const userId = c.get('user').id;
+  const body = await readJson(c);
+  const reopen = body.reopen === true;
+  const row = await saveReviewRow(orgId, lease.id, userId, reopen
+    ? { status: 'in_progress', completed_by: null, completed_at: null }
+    : { status: 'completed', completed_by: userId, completed_at: new Date().toISOString() });
+  await logAccess({ orgId, userId, action: 'edit', leaseId: lease.id, details: { review: reopen ? 'reopened' : 'completed' } });
+  return c.json(await withSummary(orgId, lease, row, userId));
+});
 
 // ---- Signatures ------------------------------------------------------------------------------------
 
