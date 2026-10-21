@@ -4,7 +4,6 @@
 // Models are rows of clause_models (migration 0110); app_settings.svm_model points at the active one.
 import { CLAUSE_TYPES } from './abstract.ts';
 import { MODEL_FORMAT, NGRAM_RANGE, TOKEN_PATTERN, type SvmModel } from './clause-svm-features.ts';
-import { TRAINING_JSON } from './clause-svm-data.ts';
 import { badRequest } from './http.ts';
 import { LEASE_CLAUSES } from './lease-clauses.ts';
 import { setSetting, SETTINGS } from './settings.ts';
@@ -83,9 +82,14 @@ export async function feedbackClauses(): Promise<{ examples: FeedbackExample[]; 
   return { examples, unmapped };
 }
 
-/** The bundled training examples ([text, clause id] pairs from svm/training_data, deduplicated). */
-export function baseExamples(): { trained_at: string; examples: [string, string][] } {
-  return JSON.parse(TRAINING_JSON) as { trained_at: string; examples: [string, string][] };
+/**
+ * The examples from svm/training_data ([text, clause id] pairs, deduplicated), uploaded by `npm run svm:train`. Kept in
+ * the database because the Edge Function bundle has a size limit.
+ */
+export async function baseExamples(): Promise<{ trained_at: string; examples: [string, string][] }> {
+  const row = must(await db().from('clause_training_sets').select('data').eq('name', 'base').maybeSingle(), 'training examples') as { data: string } | null;
+  if (!row) throw badRequest('The training data has not been uploaded yet. Run "npm run svm:train" in API/ once.');
+  return JSON.parse(row.data) as { trained_at: string; examples: [string, string][] };
 }
 
 // ---- Stored models -------------------------------------------------------------------------------

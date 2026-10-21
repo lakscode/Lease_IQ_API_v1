@@ -16,6 +16,7 @@ import { applyDomainToExistingUsers, claimableDomain } from '../lib/account-doma
 import { signInProviders } from './me.ts';
 import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels, gatewayStatus } from '../lib/ai-gateway.ts';
 import { activeModelRef, bundledSvmInfo, clauseSvmInfo } from '../lib/clause-svm.ts';
+import { loginReport, reportDays } from '../lib/account-logins.ts';
 import { activateModel, baseExamples, feedbackClauses, listModels, saveModel, validateModel } from '../lib/clause-svm-store.ts';
 import { LANGCHAIN_DEFAULT_MODEL } from '../lib/clause-langchain.ts';
 import { ABSTRACT_FIELDS, CLAUSE_TYPES } from '../lib/abstract.ts';
@@ -333,6 +334,13 @@ router.get('/prediction-catalog', async (c) => {
   });
 });
 
+// ---- Sign-in history ---------------------------------------------------------------------------
+
+// GET /api/admin/logins?days=&org_id=&user_id=&q= — sign-ins across all organizations (or one), with summaries
+router.get('/logins', async (c) => c.json(await loginReport({
+  orgId: str(c.req.query('org_id')), userId: str(c.req.query('user_id')), q: str(c.req.query('q')), days: reportDays(c.req.query('days')),
+})));
+
 // ---- Clause model training (Settings → Train model) -------------------------------------------
 // The browser trains (lib/clause-svm-train.ts in a Web Worker): Edge Functions limit CPU time per request.
 
@@ -372,7 +380,7 @@ router.get('/svm/training-data', async (c) => {
   const feedback = await feedbackClauses();
   return c.json({
     clauses: LEASE_CLAUSES,
-    base: baseExamples().examples,
+    base: (await baseExamples()).examples,
     feedback: feedback.examples.map((e) => [e.text, e.label, e.kind]),
     feedback_through: feedback.examples[0]?.edited_at ?? null,
   });

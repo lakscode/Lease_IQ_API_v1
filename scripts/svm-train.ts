@@ -3,8 +3,9 @@
 // Inputs   svm/training_data/*.xlsx   column A = clause text, column B = clause id ("__label__<id>" or bare "<id>")
 //          svm/lease_clauses.json     {clause id: clause name}; rows whose id is not listed are skipped
 // Outputs  supabase/functions/api/lib/clause-svm-model.ts     model used by lib/clause-svm.ts (Node + Edge; generated, don't edit)
-//          supabase/functions/api/lib/clause-svm-data.ts      the training examples, served to Settings → Train model, which
-//                                                             retrains in the browser with users' clauses added (generated)
+//          svm/training_examples.json                        the deduplicated examples; also uploaded to the database
+//                                                             (clause_training_sets 'base') when API/.env is set, for
+//                                                             Settings → Train model, which retrains with users' clauses
 //          supabase/functions/api/lib/lease-clauses.ts        clause id → name map (also used by the LangChain classifier)
 //          svm/training_report.json                           cross-validated metrics, per-clause scores, skipped labels
 //
@@ -16,13 +17,14 @@ import { fileURLToPath } from 'node:url';
 import { NGRAM_RANGE } from '../supabase/functions/api/lib/clause-svm-features.ts';
 import { prepareExamples, rng, TRAIN_CONFIG, trainModel, type Example } from '../supabase/functions/api/lib/clause-svm-train.ts';
 import { readXlsx } from './xlsx-read.ts';
+import 'dotenv/config';
 
 const API_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = join(API_DIR, 'svm', 'training_data');
 const CLAUSE_MAP = join(API_DIR, 'svm', 'lease_clauses.json');
 const LIB = join(API_DIR, 'supabase', 'functions', 'api', 'lib');
 const MODEL_OUT = join(LIB, 'clause-svm-model.ts');
-const DATA_OUT = join(LIB, 'clause-svm-data.ts');
+const DATA_OUT = join(API_DIR, 'svm', 'training_examples.json');
 const CLAUSES_OUT = join(LIB, 'lease-clauses.ts');
 const REPORT_OUT = join(API_DIR, 'svm', 'training_report.json');
 
@@ -68,7 +70,8 @@ console.log(`${cv.folds}-fold CV on ${cv.examples} examples: accuracy ${cv.accur
 for (const r of cv.calibration) console.log(`  confidence >= ${r.min_confidence.toFixed(1)}: coverage ${(r.coverage * 100).toFixed(1)}%, accuracy ${((r.accuracy ?? 0) * 100).toFixed(1)}%`);
 
 writeFileSync(MODEL_OUT, jsonModule('MODEL_JSON', JSON.stringify(model)));
-writeFileSync(DATA_OUT, jsonModule('TRAINING_JSON', JSON.stringify({ trained_at: model.trained_at, examples: examples.map((e) => [e.text, e.label]) })));
+const trainingJson = JSON.stringify({ trained_at: model.trained_at, examples: examples.map((e) => [e.text, e.label]) });
+writeFileSync(DATA_OUT, trainingJson);
 writeFileSync(CLAUSES_OUT,
   '// Generated from svm/lease_clauses.json by scripts/svm-train.ts (npm run svm:train). Do not edit.\n' +
   '// Clause id → name: the taxonomy of the SVM and LangChain (Llama) clause classifiers.\n' +
@@ -108,5 +111,14 @@ writeFileSync(REPORT_OUT, JSON.stringify(report, null, 2));
 const kb = (f: string) => Math.round(statSync(f).size / 1024).toLocaleString();
 console.log(`model: ${model.terms.length} terms, ${result.nonzero_weights} weights, ${kb(MODEL_OUT)} KB -> ${MODEL_OUT}`);
 console.log(`training examples: ${kb(DATA_OUT)} KB -> ${DATA_OUT}`);
+// The training examples go to the database (not the Edge bundle, which has a size limit) for Settings → Train model.
+if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const { db } = await import('../supabase/functions/api/lib/supabase.ts');
+  const { error } = await db().from('clause_training_sets')
+    .upsert({ name: 'base', data: trainingJson, examples: examples.length, updated_at: new Date().toISOString() });
+  console.log(error ? `training examples NOT uploaded: ${error.message}` : 'training examples uploaded to the database (clause_training_sets: base)');
+} else {
+  console.log('training examples not uploaded (no SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY); Settings → Train model keeps the previous set');
+}
 console.log(`report -> ${REPORT_OUT} (${((Date.now() - started) / 1000).toFixed(0)}s)`);
 if (Object.keys(untrained).length) console.log(`${Object.keys(untrained).length} clause types in lease_clauses.json have no training data: ${Object.values(untrained).join(', ')}`);

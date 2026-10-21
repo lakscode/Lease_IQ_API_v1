@@ -7,6 +7,7 @@ import { ApiError, badRequest, readJson } from '../lib/http.ts';
 import { applyDomainJoin, provisionOrgIfNone } from '../lib/account-domains.ts';
 import { logError } from '../lib/error-log.ts';
 import { errorFields, log } from '../lib/log.ts';
+import { recordLogin, recordLogout } from '../lib/account-logins.ts';
 
 const router = new Hono<AppEnv>();
 
@@ -76,6 +77,8 @@ router.get('/', async (c) => {
       await logError({ source: 'api', area: 'signup.auto_org', message: (err as Error).message, userId: user.id, email: user.email ?? null, path: '/api/me' });
     }
   }
+  // Sign-in history: the app calls this right after signing in (one row per session; never blocks sign-in).
+  await recordLogin(c, user);
   const orgs = await myOrgs(user.id, profile.is_super_admin);
   const memberOrgs = orgs.filter((o) => !o.via_super_admin);
   const activeOrgId =
@@ -99,6 +102,12 @@ router.get('/', async (c) => {
     orgs,
     active_org_id: activeOrgId,
   });
+});
+
+// POST /api/me/logout — marks this session signed out in the sign-in history (the app calls it before signing out).
+router.post('/logout', async (c) => {
+  await recordLogout(c);
+  return c.json({ ok: true });
 });
 
 const LOCALES: Locale[] = ['en', 'de', 'es', 'pt', 'it'];

@@ -8,6 +8,7 @@ import { publicLogoUrl, removePaths, uploadBytes } from '../lib/storage.ts';
 import { env } from '../lib/env.ts';
 import { loadOrg, membersRouter } from '../lib/account-members.ts';
 import { CURRENCIES, orgSummary } from '../lib/account-orgs.ts';
+import { loginReport, reportDays } from '../lib/account-logins.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', withOrg);
@@ -67,6 +68,11 @@ router.delete('/current/logo', requireRole('admin'), async (c) => {
 });
 
 // Members & invitations: /api/orgs/current/members..., /api/orgs/current/invites...
+// GET /api/orgs/current/logins?days=&user_id=&q= — sign-ins by members of the current organization (org admins)
+router.get('/current/logins', requireRole('admin'), async (c) => c.json(await loginReport({
+  orgId: c.get('orgId'), userId: str(c.req.query('user_id')), q: str(c.req.query('q')), days: reportDays(c.req.query('days')),
+})));
+
 router.route('/current', membersRouter({ orgId: (c) => c.get('orgId'), guard: [requireRole('admin')], protectSelf: true }));
 
 export default router;
