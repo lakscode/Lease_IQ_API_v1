@@ -1,63 +1,21 @@
 import { MODEL_JSON } from './clause-svm-model.ts';
+import { MODEL_FORMAT, termCounts, tfidf, type SvmModel } from './clause-svm-features.ts';
+import { getSetting, SETTINGS } from './settings.ts';
+import { db, must } from './supabase.ts';
+import { errorFields, log } from './log.ts';
 
 // Local clause classifier: TF-IDF + linear SVM trained by API/scripts/svm-train.ts on API/svm/training_data,
 // labelled with the clause ids in API/svm/lease_clauses.json. Runs in-process (Node and Edge), no AI key needed.
-// The trainer imports termCounts/tfidf from here, so training and prediction share one feature pipeline.
+// A super admin can retrain it with users' clauses (Settings → Train model); the active retrained model
+// (clause_models, app_settings.svm_model) replaces the bundled one without a redeploy.
+// Training and prediction share one feature pipeline (clause-svm-features.ts).
 
-export const MODEL_FORMAT = 1;
-/** Lower-case ASCII words of 2+ letters; digits, punctuation and mojibake are separators. */
-export const TOKEN_PATTERN = '[a-z]{2,}';
-export const NGRAM_RANGE: [number, number] = [1, 2];
-
-/** n-gram counts of a text (unigrams + space-joined bigrams by default). */
-export function termCounts(text: string, pattern = TOKEN_PATTERN, [minN, maxN] = NGRAM_RANGE): Map<string, number> {
-  const tokens = text.toLowerCase().match(new RegExp(pattern, 'g')) ?? [];
-  const counts = new Map<string, number>();
-  for (let n = minN; n <= maxN; n++) {
-    for (let i = 0; i + n <= tokens.length; i++) {
-      const term = n === 1 ? tokens[i] : tokens.slice(i, i + n).join(' ');
-      counts.set(term, (counts.get(term) ?? 0) + 1);
-    }
-  }
-  return counts;
-}
-
-/** Sparse TF-IDF vector: sublinear tf (1 + ln tf) × idf over known terms, L2-normalised. */
-export function tfidf(counts: Map<string, number>, index: Map<string, number>, idf: ArrayLike<number>): { idx: number[]; val: number[] } {
-  const idx: number[] = [];
-  const val: number[] = [];
-  let norm = 0;
-  for (const [term, count] of counts) {
-    const j = index.get(term);
-    if (j === undefined) continue;
-    const v = (1 + Math.log(count)) * idf[j];
-    idx.push(j);
-    val.push(v);
-    norm += v * v;
-  }
-  norm = Math.sqrt(norm) || 1;
-  for (let k = 0; k < val.length; k++) val[k] /= norm;
-  return { idx, val };
-}
-
-export interface SvmModel {
-  format: number;
-  trained_at: string;
-  tokenizer: { pattern: string; lowercase: boolean; ngram_range: [number, number] };
-  temperature: number;
-  classes: { id: string; name: string; examples: number }[];
-  intercept: number[];
-  terms: string[];
-  idf: number[];
-  /** Per term: flat [classIndex, weight, classIndex, weight, ...] (near-zero weights pruned). */
-  weights: number[][];
-  /** Cross-validated quality (absent in models trained before it was added). f1 by clause id; missing = too few examples to test. */
-  metrics?: { accuracy: number; macro_f1: number; examples: number; f1: Record<string, number> };
-}
+export { MODEL_FORMAT, NGRAM_RANGE, TOKEN_PATTERN, termCounts, tfidf, type SvmModel } from './clause-svm-features.ts';
 
 interface LoadedModel {
   raw: SvmModel;
   index: Map<string, number>;
+  source: 'bundled' | 'retrained';
 }
 
 export interface ClauseScore {
@@ -86,20 +44,56 @@ export interface ClauseAbstract {
   unclassified: number[];
 }
 
-let modelPromise: Promise<LoadedModel> | null = null;
+/** app_settings.svm_model: the active retrained model; { id: null } (or no row) = the bundled model. */
+export interface ActiveModelRef { id: string; trained_at: string }
+
+export async function activeModelRef(): Promise<ActiveModelRef | null> {
+  const ref = await getSetting<{ id: string | null; trained_at?: string | null } | null>(SETTINGS.svmModel, null);
+  return ref?.id ? { id: ref.id, trained_at: ref.trained_at ?? '' } : null;
+}
+
+function parseModel(json: string, source: LoadedModel['source']): LoadedModel {
+  const m = JSON.parse(json) as SvmModel;
+  if (m.format !== MODEL_FORMAT) throw new Error(`clause model format ${m.format}, expected ${MODEL_FORMAT}`);
+  return { raw: m, index: new Map(m.terms.map((t, i) => [t, i])), source };
+}
+
+let bundled: Promise<LoadedModel> | null = null;
+let current: { key: string; promise: Promise<LoadedModel> } | null = null;
 
 /**
- * Parses the ~3 MB model on first use, so routes that never classify don't pay for it. The model is a static import of
- * a generated .ts module (not a .json file or a dynamic import), because the Supabase Edge bundler only ships files it
- * reaches through static imports.
+ * The active model: a retrained one when a super admin published it, else the bundled ~3 MB model (parsed on first use,
+ * so routes that never classify don't pay for it). The bundled model is a static import of a generated .ts module
+ * (not a .json file or a dynamic import), because the Supabase Edge bundler only ships files it reaches through static
+ * imports. The active model id is re-read at most every 30 s (settings cache); a model that fails to load falls back
+ * to the bundled one.
  */
 function loadModel(): Promise<LoadedModel> {
-  modelPromise ??= Promise.resolve().then(() => {
-    const m = JSON.parse(MODEL_JSON) as SvmModel;
-    if (m.format !== MODEL_FORMAT) throw new Error(`clause-svm-model.ts format ${m.format}, expected ${MODEL_FORMAT}`);
-    return { raw: m, index: new Map(m.terms.map((t, i) => [t, i])) };
-  });
-  return modelPromise;
+  bundled ??= Promise.resolve().then(() => parseModel(MODEL_JSON, 'bundled'));
+  return (async () => {
+    let ref: ActiveModelRef | null = null;
+    try {
+      ref = await activeModelRef();
+    } catch {
+      // no database (e.g. scripts/svm-check.ts): the bundled model
+    }
+    const key = ref?.id ?? 'bundled';
+    if (current?.key !== key) {
+      current = {
+        key,
+        promise: !ref ? bundled! : (async () => {
+          try {
+            const row = must(await db().from('clause_models').select('model').eq('id', ref.id).single(), 'load clause model') as { model: string };
+            return parseModel(row.model, 'retrained');
+          } catch (err) {
+            log.error('clauses.svm', `Retrained clause model ${ref.id} could not be loaded; using the bundled model`, errorFields(err));
+            return bundled!;
+          }
+        })(),
+      };
+    }
+    return current.promise;
+  })();
 }
 
 function score(model: LoadedModel, text: string): number[] {
@@ -127,8 +121,15 @@ function rank(model: LoadedModel, text: string, topK: number): ClausePrediction 
 
 /** Clause types the model can predict (lease_clauses.json ids that had training data). */
 export async function clauseSvmInfo() {
-  const { raw } = await loadModel();
-  return { trained_at: raw.trained_at, clause_types: raw.classes, metrics: raw.metrics ?? null };
+  const { raw, source } = await loadModel();
+  return { trained_at: raw.trained_at, clause_types: raw.classes, metrics: raw.metrics ?? null, source };
+}
+
+/** The bundled model (lib/clause-svm-model.ts), whichever model is active. */
+export async function bundledSvmInfo() {
+  bundled ??= Promise.resolve().then(() => parseModel(MODEL_JSON, 'bundled'));
+  const { raw } = await bundled;
+  return { trained_at: raw.trained_at, clause_types: raw.classes.length, examples: raw.classes.reduce((n, c) => n + c.examples, 0), metrics: raw.metrics ?? null };
 }
 
 /** Classify clause texts. `topK` = predicted clause + alternatives. */

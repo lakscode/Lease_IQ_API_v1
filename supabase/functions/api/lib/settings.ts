@@ -4,6 +4,7 @@ import { db } from './supabase.ts';
 export const SETTINGS = {
   aiModel: 'ai_model',             // string model id
   aiMode: 'ai_mode',               // 'economy' | 'quality' — how much of each document Claude reads (pipeline/store.ts)
+  svmModel: 'svm_model',           // { id, trained_at } of the active retrained clause SVM (clause_models); { id: null } = bundled
   email: 'email',                  // { provider: 'default' (SMTP mailbox) | 'sendgrid', from_name, from_email, smtp_* }
 } as const;
 

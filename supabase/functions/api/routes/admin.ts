@@ -15,7 +15,8 @@ import { CURRENCIES, orgDataCounts } from '../lib/account-orgs.ts';
 import { applyDomainToExistingUsers, claimableDomain } from '../lib/account-domains.ts';
 import { signInProviders } from './me.ts';
 import { GATEWAY_MODEL_RE, gatewayConfigured, gatewayModels, gatewayStatus } from '../lib/ai-gateway.ts';
-import { clauseSvmInfo } from '../lib/clause-svm.ts';
+import { activeModelRef, bundledSvmInfo, clauseSvmInfo } from '../lib/clause-svm.ts';
+import { activateModel, baseExamples, feedbackClauses, listModels, saveModel, validateModel } from '../lib/clause-svm-store.ts';
 import { LANGCHAIN_DEFAULT_MODEL } from '../lib/clause-langchain.ts';
 import { ABSTRACT_FIELDS, CLAUSE_TYPES } from '../lib/abstract.ts';
 import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
@@ -330,6 +331,81 @@ router.get('/prediction-catalog', async (c) => {
     },
     orgs: orgs.map((o) => ({ id: o.id, name: o.name, classifier: o.clause_classifier, model: o.clause_model })),
   });
+});
+
+// ---- Clause model training (Settings → Train model) -------------------------------------------
+// The browser trains (lib/clause-svm-train.ts in a Web Worker): Edge Functions limit CPU time per request.
+
+// GET /api/admin/svm → active model, built-in model, recent retrained models, and users' clauses available for training
+router.get('/svm', async (c) => {
+  const [active, ref, builtIn, models, feedback] = await Promise.all([clauseSvmInfo(), activeModelRef(), bundledSvmInfo(), listModels(), feedbackClauses()]);
+  const activeRow = ref ? models.find((m) => m.id === ref.id) ?? null : null;
+  const since = activeRow?.feedback_through ?? null;
+  const count = (k: string) => feedback.examples.filter((e) => e.kind === k).length;
+  return c.json({
+    active: {
+      source: active.source,
+      model_id: ref?.id ?? null,
+      trained_at: active.trained_at,
+      clause_types: active.clause_types.length,
+      examples: active.clause_types.reduce((n, ct) => n + ct.examples, 0),
+      accuracy: active.metrics?.accuracy ?? null,
+      macro_f1: active.metrics?.macro_f1 ?? null,
+      feedback_examples: activeRow?.feedback_examples ?? 0,
+    },
+    built_in: { trained_at: builtIn.trained_at, clause_types: builtIn.clause_types, examples: builtIn.examples, accuracy: builtIn.metrics?.accuracy ?? null, macro_f1: builtIn.metrics?.macro_f1 ?? null },
+    models,
+    feedback: {
+      usable: feedback.examples.length,
+      added: count('added'),
+      retyped: count('retyped'),
+      verified: count('verified'),
+      // Since the active model was trained (all of them while the built-in model is active).
+      new_since_active: since ? feedback.examples.filter((e) => e.edited_at > since).length : feedback.examples.length,
+      unmapped: Object.values(feedback.unmapped).reduce((a, b) => a + b, 0),
+    },
+  });
+});
+
+// GET /api/admin/svm/training-data → { clauses: {id: name}, base: [text, id][], feedback: [text, id, kind][], feedback_through }
+router.get('/svm/training-data', async (c) => {
+  const feedback = await feedbackClauses();
+  return c.json({
+    clauses: LEASE_CLAUSES,
+    base: baseExamples().examples,
+    feedback: feedback.examples.map((e) => [e.text, e.label, e.kind]),
+    feedback_through: feedback.examples[0]?.edited_at ?? null,
+  });
+});
+
+// POST /api/admin/svm/models { model, calibration?, feedback_examples, feedback_through, activate } → { id }
+router.post('/svm/models', async (c) => {
+  const body = await readJson(c);
+  const model = validateModel(body.model);
+  const feedbackExamples = Number(body.feedback_examples);
+  const through = str(body.feedback_through);
+  const id = await saveModel({
+    modelJson: JSON.stringify(model),
+    model,
+    feedbackExamples: Number.isInteger(feedbackExamples) && feedbackExamples >= 0 ? feedbackExamples : 0,
+    feedbackThrough: through && !Number.isNaN(Date.parse(through)) ? through : null,
+    calibration: Array.isArray(body.calibration) ? body.calibration.slice(0, 10) : null,
+    activate: body.activate === true,
+    userId: c.get('user').id,
+  });
+  return c.json({ id }, 201);
+});
+
+// POST /api/admin/svm/models/:id/activate → every classifier uses this model
+router.post('/svm/models/:id/activate', async (c) => {
+  await activateModel(c.req.param('id'), c.get('user').id);
+  return c.json({ ok: true });
+});
+
+// POST /api/admin/svm/use-built-in → back to the bundled model
+router.post('/svm/use-built-in', async (c) => {
+  await activateModel(null, c.get('user').id);
+  return c.json({ ok: true });
 });
 
 /** Validate clause_classifier / clause_model from a request body (only the keys present). */
