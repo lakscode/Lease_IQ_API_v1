@@ -4,7 +4,7 @@ import { db } from './supabase.ts';
 export const SETTINGS = {
   aiModel: 'ai_model',             // string model id
   aiMode: 'ai_mode',               // 'economy' | 'quality' — how much of each document Claude reads (pipeline/store.ts)
-  email: 'email',                  // { provider: 'default' | 'sendgrid', from_name, from_email }
+  email: 'email',                  // { provider: 'default' (SMTP mailbox) | 'sendgrid', from_name, from_email, smtp_* }
 } as const;
 
 const cache = new Map<string, { value: unknown; at: number }>();
@@ -29,6 +29,7 @@ export async function setSetting(key: string, value: unknown, userId: string | n
 // app_secrets keys (service-role only; never returned to the browser)
 export const SECRETS = {
   sendgridApiKey: 'sendgrid_api_key',
+  smtpPassword: 'smtp_password',
 } as const;
 
 const secretCache = new Map<string, { value: string | null; at: number }>();

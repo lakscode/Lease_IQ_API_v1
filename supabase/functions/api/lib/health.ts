@@ -66,7 +66,7 @@ export async function getSystemStatus() {
       if (!aiConfigured()) throw new Error('ANTHROPIC_API_KEY is not set');
       return `Configured · model ${await getModel()}`;
     }, true),
-    runCheck('Email (SendGrid)', 'Invitations and report delivery', async () => {
+    runCheck('Email', 'Invitations and report delivery', async () => {
       if (!(await emailConfigured())) throw new Error('Not configured (invites fall back to copyable links)');
       return 'Configured';
     }, true),

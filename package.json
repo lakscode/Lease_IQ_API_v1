@@ -23,11 +23,13 @@
     "ai": "7.0.126",
     "dotenv": "^16.4.5",
     "hono": "4.13.11",
+    "nodemailer": "10.0.15",
     "pdf-lib": "1.17.1",
     "unpdf": "1.8.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/nodemailer": "8.0.2",
     "pg": "8.23.0",
     "typescript": "5.9.3"
   }

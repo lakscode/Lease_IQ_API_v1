@@ -9,6 +9,7 @@
     "unpdf": "npm:unpdf@1.8.1",
     "ai": "npm:ai@7.0.126",
     "@langchain/openai": "npm:@langchain/openai@1.6.0",
-    "@langchain/core/prompts": "npm:@langchain/core@1.2.13/prompts"
+    "@langchain/core/prompts": "npm:@langchain/core@1.2.13/prompts",
+    "nodemailer": "npm:nodemailer@10.0.15"
   }
 }

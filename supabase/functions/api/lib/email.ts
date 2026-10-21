@@ -1,20 +1,34 @@
-// Outgoing email (invitations, reports, CSV exports). SendGrid when configured; otherwise callers
-// fall back (e.g. invites return a copyable link). Supabase Auth sends its own account emails.
+// Outgoing email (invitations, reports, CSV exports). The super admin picks the provider in Settings → Email:
+// 'default' sends through an SMTP mailbox (Gmail, Outlook / Microsoft 365, a company mail server), 'sendgrid' through
+// the SendGrid API. When the chosen provider isn't set up, callers fall back (e.g. invites return a copyable link).
+// Supabase Auth sends its own account emails.
+// Supabase Edge Functions can't open outgoing connections on ports 25 and 587, so deployed SMTP must use port 465 (SSL).
 import { env } from './env.ts';
 import { getSecret, getSetting, SECRETS, SETTINGS } from './settings.ts';
 import { ApiError } from './http.ts';
 import { log } from './log.ts';
 
+export type SmtpSecurity = 'ssl' | 'starttls' | 'none';
+
 export interface EmailSettings {
+  /** 'default' = SMTP mailbox; 'sendgrid' = SendGrid API. */
   provider: 'default' | 'sendgrid';
   from_name: string;
   from_email: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_security: SmtpSecurity;
+  smtp_user: string;
 }
 
 export const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   provider: 'default',
   from_name: 'Lease IQ',
   from_email: '',
+  smtp_host: '',
+  smtp_port: 465,
+  smtp_security: 'ssl',
+  smtp_user: '',
 };
 
 export async function getEmailSettings(): Promise<EmailSettings> {
@@ -28,15 +42,25 @@ export async function sendgridKey(): Promise<{ key: string; source: 'settings' |
   return env.sendgridApiKey ? { key: env.sendgridApiKey, source: 'environment' } : null;
 }
 
-/** What the admin UI may know about the key: where it comes from and its last 4 characters. */
-export async function sendgridKeyStatus(): Promise<{ sendgrid_key_set: boolean; sendgrid_key_source: 'settings' | 'environment' | null; sendgrid_key_hint: string | null }> {
+/** What the admin UI may know about the secrets: SendGrid key source and last 4 characters; whether an SMTP password is saved. */
+export async function emailSecretStatus(): Promise<{
+  sendgrid_key_set: boolean; sendgrid_key_source: 'settings' | 'environment' | null; sendgrid_key_hint: string | null; smtp_password_set: boolean;
+}> {
   const k = await sendgridKey();
-  return { sendgrid_key_set: Boolean(k), sendgrid_key_source: k?.source ?? null, sendgrid_key_hint: k ? k.key.slice(-4) : null };
+  return {
+    sendgrid_key_set: Boolean(k),
+    sendgrid_key_source: k?.source ?? null,
+    sendgrid_key_hint: k ? k.key.slice(-4) : null,
+    smtp_password_set: Boolean(await getSecret(SECRETS.smtpPassword)),
+  };
 }
 
 export async function emailConfigured(): Promise<boolean> {
   const settings = await getEmailSettings();
-  return settings.provider === 'sendgrid' && Boolean(await sendgridKey()) && Boolean(settings.from_email);
+  if (!settings.from_email) return false;
+  if (settings.provider === 'sendgrid') return Boolean(await sendgridKey());
+  // SMTP: a host, and a password whenever a username is set (relays without login need neither).
+  return Boolean(settings.smtp_host) && (!settings.smtp_user || Boolean(await getSecret(SECRETS.smtpPassword)));
 }
 
 export interface EmailAttachment {
@@ -46,18 +70,26 @@ export interface EmailAttachment {
   type: string;
 }
 
-export async function sendEmail(msg: {
+export interface EmailMessage {
   to: string[];
   subject: string;
   html: string;
   text?: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
-}): Promise<void> {
+}
+
+export async function sendEmail(msg: EmailMessage): Promise<void> {
   const settings = await getEmailSettings();
   if (!(await emailConfigured())) {
-    throw new ApiError('email_not_configured', 'Email is not configured. A super admin can set up SendGrid in Settings.');
+    throw new ApiError('email_not_configured', 'Email is not configured. A super admin can set up an email mailbox (SMTP) or SendGrid in Settings.');
   }
+  if (settings.provider === 'sendgrid') await sendViaSendgrid(settings, msg);
+  else await sendViaSmtp(settings, msg);
+  log.info('email', `Email sent: ${msg.subject.slice(0, 120)}`, { provider: settings.provider, to: msg.to.length, attachments: msg.attachments?.length ?? 0 });
+}
+
+async function sendViaSendgrid(settings: EmailSettings, msg: EmailMessage): Promise<void> {
   const apiKey = (await sendgridKey())!.key;
   const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -81,7 +113,42 @@ export async function sendEmail(msg: {
     log.error('email', `SendGrid error ${res.status}`, { status: res.status, to: msg.to.length, subject: msg.subject.slice(0, 120), response: body.slice(0, 300) });
     throw new Error(`SendGrid error ${res.status}: ${body.slice(0, 300)}`);
   }
-  log.info('email', `Email sent: ${msg.subject.slice(0, 120)}`, { to: msg.to.length, attachments: msg.attachments?.length ?? 0 });
+}
+
+async function sendViaSmtp(settings: EmailSettings, msg: EmailMessage): Promise<void> {
+  // Loaded on first use so the SMTP library isn't part of every cold start.
+  const { createTransport } = await import('nodemailer');
+  const password = settings.smtp_user ? await getSecret(SECRETS.smtpPassword) : null;
+  const transport = createTransport({
+    host: settings.smtp_host,
+    port: settings.smtp_port,
+    secure: settings.smtp_security === 'ssl',
+    requireTLS: settings.smtp_security === 'starttls',
+    ignoreTLS: settings.smtp_security === 'none',
+    ...(settings.smtp_user ? { auth: { user: settings.smtp_user, pass: password ?? '' } } : {}),
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+  try {
+    await transport.sendMail({
+      from: { name: settings.from_name || 'Lease IQ', address: settings.from_email },
+      to: msg.to,
+      ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
+      subject: msg.subject,
+      ...(msg.text ? { text: msg.text } : {}),
+      html: msg.html,
+      ...(msg.attachments?.length
+        ? { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content, encoding: 'base64', contentType: a.type })) }
+        : {}),
+    });
+  } catch (err) {
+    const message = (err as Error).message ?? String(err);
+    log.error('email', `SMTP error: ${message}`, { host: settings.smtp_host, port: settings.smtp_port, to: msg.to.length, subject: msg.subject.slice(0, 120) });
+    throw new Error(`Email server error: ${message.slice(0, 300)}`);
+  } finally {
+    transport.close();
+  }
 }
 
 function escapeHtml(value: string): string {

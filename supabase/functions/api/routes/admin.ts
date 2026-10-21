@@ -7,7 +7,7 @@ import { db, must } from '../lib/supabase.ts';
 import { ApiError, badRequest, forbidden, notFound, readJson, str } from '../lib/http.ts';
 import { DEFAULT_MODEL, getModel, SUPPORTED_MODELS } from '../lib/ai.ts';
 import { setSecret, setSetting, SECRETS, SETTINGS } from '../lib/settings.ts';
-import { emailConfigured, getEmailSettings, renderEmail, sendEmail, sendgridKeyStatus, type EmailSettings } from '../lib/email.ts';
+import { emailConfigured, getEmailSettings, renderEmail, sendEmail, emailSecretStatus, type EmailSettings, type SmtpSecurity } from '../lib/email.ts';
 import { env } from '../lib/env.ts';
 import { publicLogoUrl, removePaths } from '../lib/storage.ts';
 import { loadOrg, membersRouter, normalizeEmail, parseRole, removeMembers, addMember } from '../lib/account-members.ts';
@@ -36,7 +36,7 @@ router.get('/settings', async (c) => {
     ai_configured: Boolean(env.anthropicApiKey),
     ai_mode: await aiMode(),
     email: await getEmailSettings(),
-    ...(await sendgridKeyStatus()),
+    ...(await emailSecretStatus()),
     email_configured: await emailConfigured(),
   });
 });
@@ -56,23 +56,49 @@ router.put('/settings/ai-mode', async (c) => {
   return c.json({ ai_mode: mode });
 });
 
+// PUT /api/admin/settings/email — provider 'default' (SMTP mailbox) or 'sendgrid', sender, SMTP server, secrets.
+// Secrets (sendgrid_api_key, smtp_password): a new value replaces the saved one; omitted or empty keeps it;
+// clear_sendgrid_api_key / clear_smtp_password remove it. Secrets are never returned.
 router.put('/settings/email', async (c) => {
   const body = await readJson(c);
   const provider = body.provider === 'sendgrid' ? 'sendgrid' : body.provider === 'default' ? 'default' : null;
   if (!provider) throw badRequest('Provider must be default or sendgrid');
+  const current = await getEmailSettings();
   const fromName = (str(body.from_name) ?? 'Lease IQ').slice(0, 100);
   const fromEmail = str(body.from_email)?.toLowerCase() ?? '';
-  if (provider === 'sendgrid' && !normalizeEmail(fromEmail)) throw badRequest('A valid sender address is required for SendGrid');
+  if (fromEmail && !normalizeEmail(fromEmail)) throw badRequest('Enter a valid sender address');
+  if (provider === 'sendgrid' && !fromEmail) throw badRequest('A valid sender address is required for SendGrid');
+
+  const smtpHost = (str(body.smtp_host) ?? (body.smtp_host === undefined ? current.smtp_host : '')).toLowerCase().slice(0, 200);
+  if (smtpHost && !/^[a-z0-9.-]+$/.test(smtpHost)) throw badRequest('Enter the mail server name, e.g. smtp.gmail.com');
+  const smtpPort = body.smtp_port === undefined ? current.smtp_port : Number(body.smtp_port);
+  if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) throw badRequest('Enter a valid port (usually 465 or 587)');
+  const security = (body.smtp_security === undefined ? current.smtp_security : body.smtp_security) as SmtpSecurity;
+  if (!['ssl', 'starttls', 'none'].includes(security)) throw badRequest('Security must be ssl, starttls or none');
+  const smtpUser = (str(body.smtp_user) ?? (body.smtp_user === undefined ? current.smtp_user : '')).slice(0, 200);
+  if (provider === 'default' && (smtpHost || smtpUser) && (!smtpHost || !fromEmail)) {
+    throw badRequest('Enter the mail server and a sender address to send email from a mailbox');
+  }
+
   // sendgrid_api_key: a new key to save; omitted or empty keeps the saved one. clear_sendgrid_api_key removes it.
   const apiKey = str(body.sendgrid_api_key)?.trim();
   if (apiKey && (!apiKey.startsWith('SG.') || apiKey.length > 200 || /\s/.test(apiKey))) {
     throw badRequest('That does not look like a SendGrid API key (it should start with "SG.")');
   }
-  const value: EmailSettings = { provider, from_name: fromName, from_email: fromEmail };
-  await setSetting(SETTINGS.email, value, c.get('user').id);
-  if (apiKey) await setSecret(SECRETS.sendgridApiKey, apiKey, c.get('user').id);
-  else if (body.clear_sendgrid_api_key === true) await setSecret(SECRETS.sendgridApiKey, null, c.get('user').id);
-  return c.json({ email: value, ...(await sendgridKeyStatus()), email_configured: await emailConfigured() });
+  const smtpPassword = typeof body.smtp_password === 'string' && body.smtp_password !== '' ? body.smtp_password : null;
+  if (smtpPassword && smtpPassword.length > 500) throw badRequest('Password is too long');
+
+  const value: EmailSettings = {
+    provider, from_name: fromName, from_email: fromEmail,
+    smtp_host: smtpHost, smtp_port: smtpPort, smtp_security: security, smtp_user: smtpUser,
+  };
+  const userId = c.get('user').id;
+  await setSetting(SETTINGS.email, value, userId);
+  if (apiKey) await setSecret(SECRETS.sendgridApiKey, apiKey, userId);
+  else if (body.clear_sendgrid_api_key === true) await setSecret(SECRETS.sendgridApiKey, null, userId);
+  if (smtpPassword) await setSecret(SECRETS.smtpPassword, smtpPassword, userId);
+  else if (body.clear_smtp_password === true || (body.smtp_user !== undefined && !smtpUser)) await setSecret(SECRETS.smtpPassword, null, userId);
+  return c.json({ email: value, ...(await emailSecretStatus()), email_configured: await emailConfigured() });
 });
 
 router.post('/settings/email/test', async (c) => {
