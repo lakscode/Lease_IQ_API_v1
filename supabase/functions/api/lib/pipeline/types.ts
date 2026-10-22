@@ -110,4 +110,6 @@ export interface AbstractResult {
     lease_id: string | null;
     reason: string | null;
   };
+  /** The AI provider and model that produced this result (absent in results saved before migration 0212). */
+  ai?: { provider: 'claude' | 'openai'; model: string } | null;
 }

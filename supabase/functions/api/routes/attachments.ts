@@ -6,7 +6,7 @@ import { withOrg, requireRole, getOrgRow } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
 import { ApiError, badRequest, dateStr, num, readJson, str } from '../lib/http.ts';
 import { env } from '../lib/env.ts';
-import { aiConfigured } from '../lib/ai.ts';
+import { orgAiConfigured, requireOrgAi } from '../lib/ai-provider.ts';
 import { runInBackground } from '../lib/runtime.ts';
 import { logAccess } from '../lib/access-log.ts';
 import { removePaths, safeName, signedUploadUrl, signedUrl } from '../lib/storage.ts';
@@ -95,7 +95,7 @@ router.post('/leases/:id/attachments', requireRole('editor'), async (c) => {
   }).select(COLUMNS).single())!;
 
   await logAccess({ orgId, userId: c.get('user').id, action: 'upload', leaseId: lease.id, details: { attachment_id: row.id, file_name: row.file_name } });
-  if (aiConfigured()) startReview(c, row.id);
+  if (await orgAiConfigured(orgId)) startReview(c, row.id);
   return c.json(row, 201);
 });
 
@@ -130,7 +130,7 @@ router.get('/attachments/:id/download', async (c) => {
 /** (Re-)run the AI review. */
 router.post('/attachments/:id/review', requireRole('editor'), async (c) => {
   const att = await getOrgRow<{ id: string; status: string }>(c, 'attachments', c.req.param('id'), 'id, status');
-  if (!aiConfigured()) throw new ApiError('ai_not_configured', 'AI is not configured. Set ANTHROPIC_API_KEY on the API.');
+  await requireOrgAi(c.get('orgId'));
   const row = must(await db().from('attachments').update({ status: 'processing', error: null }).eq('id', att.id).select(COLUMNS).single())!;
   startReview(c, att.id);
   return c.json(row, 202);

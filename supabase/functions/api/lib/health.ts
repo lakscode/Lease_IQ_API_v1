@@ -1,6 +1,7 @@
 import { db } from './supabase.ts';
 import { env } from './env.ts';
 import { aiConfigured, getModel } from './ai.ts';
+import { OPENAI_DEFAULT_MODEL, openaiConfigured } from './ai-openai.ts';
 import { emailConfigured } from './email.ts';
 import { isEdgeRuntime } from './runtime.ts';
 
@@ -65,6 +66,10 @@ export async function getSystemStatus() {
     runCheck('AI (Claude)', 'Lease abstraction, assistant, insights', async () => {
       if (!aiConfigured()) throw new Error('ANTHROPIC_API_KEY is not set');
       return `Configured · model ${await getModel()}`;
+    }, true),
+    runCheck('AI (OpenAI)', 'Document processing for organizations using OpenAI', async () => {
+      if (!openaiConfigured()) throw new Error('OPENAI_API_KEY is not set');
+      return `Configured · default model ${OPENAI_DEFAULT_MODEL}`;
     }, true),
     runCheck('Email', 'Invitations and report delivery', async () => {
       if (!(await emailConfigured())) throw new Error('Not configured (invites fall back to copyable links)');

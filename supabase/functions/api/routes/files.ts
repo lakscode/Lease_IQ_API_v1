@@ -5,7 +5,7 @@ import { requireRole, requireSuperAdmin, withOrg, getOrgRow } from '../lib/auth.
 import { db, must } from '../lib/supabase.ts';
 import { ApiError, badRequest, readJson, str, num } from '../lib/http.ts';
 import { env } from '../lib/env.ts';
-import { aiConfigured } from '../lib/ai.ts';
+import { orgAiConfigured, requireOrgAi } from '../lib/ai-provider.ts';
 import { logAccess } from '../lib/access-log.ts';
 import { safeName, signedUploadUrl, signedUrl } from '../lib/storage.ts';
 import { runInBackground } from '../lib/runtime.ts';
@@ -131,7 +131,7 @@ router.get('/', async (c) => {
   else if (status === 'active') files = files.filter((f) => f.status === 'queued' || f.status === 'processing');
   else if (status && (STATUSES as readonly string[]).includes(status)) files = files.filter((f) => f.status === status);
   if (search) files = files.filter((f) => matches(f, search));
-  return c.json({ summary, files, ai_configured: aiConfigured() });
+  return c.json({ summary, files, ai_configured: await orgAiConfigured(orgId) });
 });
 
 // ---- Maintenance (super admins) — registered before /:id routes ---------------------------------
@@ -273,7 +273,7 @@ router.post('/:id/reanalyze', requireRole('editor'), async (c) => {
 // POST /api/files/:id/signatures → re-check signatures of every document in the file (background)
 router.post('/:id/signatures', requireRole('editor'), async (c) => {
   const file = await orgFile(c, c.req.param('id'));
-  if (!aiConfigured()) throw new ApiError('ai_not_configured', 'AI is not configured. Set ANTHROPIC_API_KEY on the API.');
+  await requireOrgAi(file.org_id);
   const docs = must(await db().from('documents').select('id').eq('file_id', file.id).eq('org_id', file.org_id)) as { id: string }[];
   const profile = c.get('profile');
   runInBackground(async () => {

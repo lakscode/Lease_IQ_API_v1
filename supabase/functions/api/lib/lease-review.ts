@@ -5,7 +5,8 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import checklistJson from './review-checklist.json' with { type: 'json' };
 import { ABSTRACT_FIELDS, type AbstractField, type FieldKind } from './abstract.ts';
-import { callClaudeJson, languageInstruction, pdfBlock, s, type AiContext } from './ai.ts';
+import { languageInstruction, pdfBlock, s, type AiContext } from './ai.ts';
+import { callAiJson } from './ai-provider.ts';
 import { badRequest } from './http.ts';
 import { log } from './log.ts';
 import { db, must } from './supabase.ts';
@@ -430,7 +431,7 @@ export async function aiReviewCheck(ctx: AiContext, input: {
     return `- ${cl.name} (counts: ${cl.match.join(', ')}): ${found.length ? `predicted ${found.length}× ${pages.length ? `on page(s) ${pages.join(', ')}` : ''}` : 'not predicted'}`;
   });
 
-  const { data } = await callClaudeJson<{
+  const { data } = await callAiJson<{
     fields: { key: string; status: AiFieldResult['status']; correct_value: string | null; document: number | null; page: number | null; note: string }[];
     clauses: { name: string; present: boolean; document: number | null; page: number | null; note: string }[];
   }>(ctx, {

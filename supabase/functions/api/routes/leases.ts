@@ -30,10 +30,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STATUSES: LeaseStatus[] = ['active', 'expiring', 'expired', 'renewed', 'unknown'];
 
 const LEASE_COLUMNS =
-  'id, tenant_name, landlord_name, premises_address, rentable_area, commencement_date, expiration_date, base_rent_monthly, status, property_type, risk_score, main_document_id, updated_at';
+  'id, tenant_name, landlord_name, premises_address, rentable_area, commencement_date, expiration_date, base_rent_monthly, status, property_type, risk_score, main_document_id, ai_provider, ai_model, updated_at';
 
 const DOC_COLUMNS =
-  'id, org_id, lease_id, file_id, doc_type, title, effective_date, page_start, page_end, page_count, storage_path, sha256, abstract, summary, changes_made, signature, is_scanned, created_at, updated_at';
+  'id, org_id, lease_id, file_id, doc_type, title, effective_date, page_start, page_end, page_count, storage_path, sha256, abstract, summary, changes_made, signature, is_scanned, ai_provider, ai_model, created_at, updated_at';
 
 interface LeaseRow {
   id: string;
@@ -48,6 +48,8 @@ interface LeaseRow {
   property_type: string | null;
   risk_score: number | null;
   main_document_id: string | null;
+  ai_provider: string | null;
+  ai_model: string | null;
   updated_at: string;
   current_terms?: Record<string, TermValue>;
 }
@@ -86,6 +88,8 @@ function listItem(row: LeaseRow, documentCount: number) {
     risk_score: row.risk_score,
     document_count: documentCount,
     main_document_id: row.main_document_id,
+    ai_provider: row.ai_provider,
+    ai_model: row.ai_model,
     updated_at: row.updated_at,
   };
 }
@@ -125,6 +129,8 @@ function docOut(d: DocRow, fileNames: Map<string, string>) {
     changes_made: d.changes_made,
     summary: d.summary,
     signature: d.signature,
+    ai_provider: d.ai_provider,
+    ai_model: d.ai_model,
     sha256: d.sha256,
     has_pdf: Boolean(d.storage_path),
     is_scanned: d.is_scanned,
@@ -675,7 +681,7 @@ router.delete('/:id/clauses/:clauseId', requireRole('editor'), async (c) => {
 
 interface ClauseOut {
   id: string; document_id: string; document_title: string | null; doc_type: string | null; clause_type: string;
-  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama' | 'user'; model: string | null; confidence: number | null;
+  source: 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama' | 'openai' | 'user'; model: string | null; confidence: number | null;
   original_clause_type: string | null; verified: boolean; dismissed: boolean; edited_at: string | null; alt_types: { type: string; confidence: number }[] | null; section: string | null;
   page: number | null; paragraph: number | null; line: number | null; text: string | null;
   rects: { x: number; y: number; w: number; h: number }[] | null; created_by: string | null; created_by_name?: string | null;

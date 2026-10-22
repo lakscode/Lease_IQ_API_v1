@@ -350,7 +350,7 @@ export async function runFile(fileId: string, opts: { budgetMs?: number; maxStep
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError && err.code === 'ai_not_configured') {
-    return 'AI is not configured (ANTHROPIC_API_KEY is not set on the API). Retry the file once AI has been set up.';
+    return `${err.message} Retry the file once AI has been set up.`;
   }
   const msg = (err as Error)?.message || String(err);
   return msg.length > 1000 ? `${msg.slice(0, 1000)}…` : msg;

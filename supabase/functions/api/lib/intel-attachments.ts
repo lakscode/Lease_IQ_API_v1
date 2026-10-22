@@ -1,7 +1,8 @@
 // Supporting documents: allowed types, text extraction (OOXML zip, e-mail, Outlook .msg) and the AI review.
 // Zip entries are inflated with the Web DecompressionStream('deflate-raw') (Node ≥ 21 and Deno), so no zip dependency.
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { callClaudeJson, languageInstruction, pdfBlock, s, toBase64 } from './ai.ts';
+import { languageInstruction, pdfBlock, s, toBase64 } from './ai.ts';
+import { callAiJson } from './ai-provider.ts';
 import { ATTACHMENT_CATEGORIES } from './abstract.ts';
 import { db, must } from './supabase.ts';
 import { downloadBytes } from './storage.ts';
@@ -242,7 +243,7 @@ export async function reviewAttachment(input: { orgId: string; userId: string; a
       `Lease terms:\n${terms || '- none extracted'}`,
     ].filter(Boolean).join('\n\n');
 
-    const { data } = await callClaudeJson<Omit<AttachmentReview, 'fields' | 'reviewed_at'> & { fields: { name: string; value: string }[] }>(
+    const { data } = await callAiJson<Omit<AttachmentReview, 'fields' | 'reviewed_at'> & { fields: { name: string; value: string }[] }>(
       { process: 'attachment', orgId, userId: input.userId, leaseId: att.lease_id },
       { system, messages: [{ role: 'user', content: [...content, { type: 'text', text }] }], jsonSchema: REVIEW_SCHEMA, maxTokens: 16000, effort: 'medium' },
     );

@@ -1,11 +1,13 @@
 // Clause classification of a stored document with the organization's chosen classifier (organizations.clause_classifier):
-//   claude  → Claude AI (from the abstract step, or a re-classification call)
+//   claude  → the organization's AI provider, Claude or OpenAI (from the abstract step, or a re-classification call);
+//             stored with source 'claude' or 'openai'
 //   svm     → local SVM model (lib/clause-svm.ts), no AI key needed
 //   gateway → an LLM through Vercel AI Gateway (organizations.clause_model)
 //   langchain → a LangChain.js chain with any Vercel AI Gateway model labels the SVM's clause segments
 //   llama   → a Meta Llama model (Vercel AI SDK, no LangChain) labels the SVM's clause segments
 // Each run replaces all of the document's clauses; clauses.source / clauses.model record what produced them.
-import { getModel, languageInstruction, s, type AiContext, type AiProcess } from '../ai.ts';
+import { languageInstruction, s, type AiContext, type AiProcess } from '../ai.ts';
+import { orgAi } from '../ai-provider.ts';
 import { callGatewayJson } from '../ai-gateway.ts';
 import { abstractClauses, clauseSvmInfo, splitClauses } from '../clause-svm.ts';
 import type { SegmentLabel } from '../clause-labels.ts';
@@ -20,7 +22,8 @@ import { documentInput, documentPages, replaceClauses, type ClauseSource } from 
 import type { ClauseResult } from './types.ts';
 import { errorFields, log } from '../log.ts';
 
-export type ClauseClassifier = ClauseSource;
+/** 'openai' is a clause source, not a classifier: classifier 'claude' uses the organization's AI provider. */
+export type ClauseClassifier = Exclude<ClauseSource, 'openai'>;
 export const CLAUSE_CLASSIFIERS: readonly ClauseClassifier[] = ['claude', 'svm', 'gateway', 'langchain', 'llama'];
 
 /** Default model of the classifiers that take one (gateway has none: its model is required). */
@@ -141,19 +144,21 @@ async function classifyClausesGateway(doc: ClauseDoc, model: string, opts: { use
 
 /**
  * Classify a document's clauses with its organization's classifier and store them.
- * `claudeClauses`: clauses the abstract step already produced (used when the classifier is Claude).
+ * `claudeClauses`: clauses the abstract step already produced (used when the classifier is 'claude', i.e. the org's AI).
  * A failing gateway call falls back to the SVM so the document still gets clauses.
  */
 export async function classifyDocumentClauses(doc: ClauseDoc, opts: {
   userId: string | null; locale: Locale; process: AiProcess; claudeClauses?: ClauseResult[];
-}): Promise<{ source: ClauseClassifier; count: number; note?: string }> {
+}): Promise<{ source: ClauseSource; count: number; note?: string }> {
   const { classifier, model } = await orgClauseClassifier(doc.org_id);
   log.info('clauses', `Classifying clauses with ${classifier}${model ? ` (${model})` : ''}`, { documentId: doc.id, orgId: doc.org_id, classifier, model });
   if (classifier === 'claude') {
     const clauses = opts.claudeClauses ?? await classifyClauses(
       { process: opts.process, orgId: doc.org_id, userId: opts.userId, fileId: doc.file_id, leaseId: doc.lease_id },
       await documentInput(doc, { visual: false }), opts.locale);
-    return { source: 'claude', count: await replaceClauses(doc.org_id, doc.id, doc.lease_id, clauses, 'claude', await getModel()) };
+    const ai = await orgAi(doc.org_id);
+    const source = ai.provider === 'openai' ? 'openai' : 'claude';
+    return { source, count: await replaceClauses(doc.org_id, doc.id, doc.lease_id, clauses, source, ai.model) };
   }
   const labeller = LABELLERS[classifier];
   if (labeller && model) {

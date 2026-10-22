@@ -372,7 +372,7 @@ export function signatureRecord(sig: SignatureResult | null | undefined): Record
  * Which classifier produced a clause: Claude AI or a Vercel AI Gateway model (CLAUSE_TYPES names), or the local SVM,
  * LangChain or Llama (lease_clauses.json names).
  */
-export type ClauseSource = 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama';
+export type ClauseSource = 'claude' | 'svm' | 'gateway' | 'langchain' | 'llama' | 'openai';
 
 export function clauseRows(orgId: string, documentId: string, leaseId: string | null, clauses: ClauseResult[], source: ClauseSource = 'claude', model: string | null = null) {
   const known = (type: string) => source === 'svm' || source === 'langchain' || source === 'llama' || CLAUSE_SET.has(type);
@@ -455,6 +455,8 @@ export async function applyAbstract(doc: SplitDocument, result: AbstractResult, 
     summary: result.summary?.trim() || null,
     changes_made: changes,
     signature: signatureRecord(result.signature),
+    ai_provider: result.ai?.provider ?? null,
+    ai_model: result.ai?.model ?? null,
   };
   const eff = validDate(result.effective_date);
   if (!doc.effective_date && eff) update.effective_date = eff;

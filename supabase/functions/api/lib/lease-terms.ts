@@ -14,6 +14,8 @@ export interface FamilyDocument {
   abstract: Record<string, unknown>;
   changes_made: string | null;
   file_id: string | null;
+  ai_provider: string | null;
+  ai_model: string | null;
 }
 
 export interface TermValue {
@@ -91,7 +93,7 @@ export function noticeByDate(terms: Record<string, TermValue>): string | null {
 export async function loadFamily(leaseId: string): Promise<FamilyDocument[]> {
   const { data, error } = await db()
     .from('documents')
-    .select('id, doc_type, title, effective_date, created_at, page_start, abstract, changes_made, file_id')
+    .select('id, doc_type, title, effective_date, created_at, page_start, abstract, changes_made, file_id, ai_provider, ai_model')
     .eq('lease_id', leaseId);
   if (error) throw new Error(error.message);
   return (data ?? []) as FamilyDocument[];
@@ -106,8 +108,12 @@ export async function recomputeLease(leaseId: string): Promise<void> {
   }
   const terms = mergeTerms(docs);
   const main = docs.find((d) => d.doc_type === 'main_lease') ?? null;
+  // The AI that abstracted the lease's most recent document.
+  const ai = docs.filter((d) => d.ai_provider).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0] ?? null;
   const update: Record<string, unknown> = {
     main_document_id: main?.id ?? null,
+    ai_provider: ai?.ai_provider ?? null,
+    ai_model: ai?.ai_model ?? null,
     current_terms: terms,
     status: computeStatus(docs, terms),
   };

@@ -4,7 +4,7 @@ import type { AppEnv } from '../lib/types.ts';
 import { withOrg, requireRole, getOrgRow } from '../lib/auth.ts';
 import { db, must } from '../lib/supabase.ts';
 import { ApiError, badRequest, readJson, str } from '../lib/http.ts';
-import { aiConfigured } from '../lib/ai.ts';
+import { requireOrgAi } from '../lib/ai-provider.ts';
 import { runInBackground } from '../lib/runtime.ts';
 import { ALL_CATEGORIES, cleanCamTerms, cleanSchedule, generateInsights, kindOf } from '../lib/intel-insights.ts';
 
@@ -54,7 +54,7 @@ router.get('/leases/:id/insights', async (c) => {
 router.post('/leases/:id/insights', requireRole('editor'), async (c) => {
   const orgId = c.get('orgId');
   const lease = await getOrgRow<{ id: string }>(c, 'leases', c.req.param('id'), 'id');
-  if (!aiConfigured()) throw new ApiError('ai_not_configured', 'AI is not configured. Set ANTHROPIC_API_KEY on the API.');
+  await requireOrgAi(orgId);
   const { data: current } = await db().from('lease_insights').select('status, updated_at').eq('lease_id', lease.id).maybeSingle();
   if (current?.status === 'processing' && Date.now() - Date.parse(current.updated_at) < STALE_MS) {
     throw new ApiError('conflict', 'The review is already running for this lease.');

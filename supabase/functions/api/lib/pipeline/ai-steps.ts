@@ -1,7 +1,8 @@
 // The Claude calls of the lease pipeline: OCR, split & classify, abstract (+clauses, signature, linking),
 // signature re-check and clause re-classification. Everything else in the pipeline is plain code (store.ts).
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { callClaudeJson, languageInstruction, pdfBlock, s, type AiContext } from '../ai.ts';
+import { languageInstruction, pdfBlock, s, type AiContext } from '../ai.ts';
+import { callAiJson } from '../ai-provider.ts';
 import { ABSTRACT_FIELDS, CLAUSE_TYPES, DOC_TYPES } from '../abstract.ts';
 import type { Locale } from '../types.ts';
 import type { AbstractResult, ClauseResult, SignatureResult, SplitResult } from './types.ts';
@@ -42,7 +43,7 @@ const OCR_SCHEMA = s.object({
 
 /** Transcribe a (sub-)PDF of scanned pages. Returns text per page (index 0 = first page of the sub-PDF). */
 export async function ocrPdf(ctx: AiContext, bytes: Uint8Array, pageCount: number): Promise<string[]> {
-  const { data } = await callClaudeJson<{ pages: { page: number; text: string }[] }>(ctx, {
+  const { data } = await callAiJson<{ pages: { page: number; text: string }[] }>(ctx, {
     system:
       'You transcribe scanned commercial lease documents. Reproduce the text of every page faithfully, in reading order, ' +
       'keeping headings, numbering, and line breaks between paragraphs. Do not summarise, translate, or correct the text. ' +
@@ -75,7 +76,7 @@ const SPLIT_SCHEMA = s.object({
 });
 
 export async function splitFile(ctx: AiContext, input: DocumentInput, totalPages: number, locale: Locale): Promise<SplitResult> {
-  const { data } = await callClaudeJson<SplitResult>(ctx, {
+  const { data } = await callAiJson<SplitResult>(ctx, {
     system:
       'You are a commercial real estate paralegal. An uploaded PDF may contain one document or a bundle of several ' +
       '(a main lease, amendments, addenda, commencement letters, other papers). Identify each separate document, in page order, ' +
@@ -193,7 +194,7 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
     linking,
   ].filter(Boolean).join('\n\n');
 
-  const { data } = await callClaudeJson<Omit<AbstractResult, 'fields'> & { fields: { key: string; value: string; page: number }[] }>(ctx, {
+  const { data, provider, model } = await callAiJson<Omit<AbstractResult, 'fields' | 'ai'> & { fields: { key: string; value: string; page: number }[] }>(ctx, {
     system:
       'You are an expert commercial lease abstractor. Be precise: values must be supported by the document. Dates as YYYY-MM-DD, money and areas as plain numbers. ' +
       languageInstruction(locale),
@@ -202,13 +203,13 @@ export async function abstractDocument(ctx: AiContext, input: DocumentInput, inf
     effort: info.effort ?? 'high',
     maxTokens: 48000,
   });
-  return { ...data, clauses: data.clauses ?? [], fields: fieldsRecord(data.fields) };
+  return { ...data, clauses: data.clauses ?? [], fields: fieldsRecord(data.fields), ai: { provider, model } };
 }
 
 // ---- Signature re-check -----------------------------------------------------------------------
 
 export async function checkSignatures(ctx: AiContext, input: DocumentInput, locale: Locale): Promise<SignatureResult> {
-  const { data } = await callClaudeJson<SignatureResult>(ctx, {
+  const { data } = await callAiJson<SignatureResult>(ctx, {
     system:
       'You verify the execution of commercial lease documents. Look at the likely signature pages, including ink signatures on scanned pages, ' +
       'digital signatures, and DocuSign or Adobe Sign envelopes/markers. Unsigned blank signature lines mean unsigned. ' + languageInstruction(locale),
@@ -223,7 +224,7 @@ export async function checkSignatures(ctx: AiContext, input: DocumentInput, loca
 // ---- Clause re-classification -----------------------------------------------------------------
 
 export async function classifyClauses(ctx: AiContext, input: DocumentInput, locale: Locale): Promise<ClauseResult[]> {
-  const { data } = await callClaudeJson<{ clauses: ClauseResult[] }>(ctx, {
+  const { data } = await callAiJson<{ clauses: ClauseResult[] }>(ctx, {
     system: 'You are an expert commercial lease abstractor who classifies lease clauses. ' + languageInstruction(locale),
     messages: [{ role: 'user', content: inputBlocks(input, `Classify every substantive clause of this document into the allowed clause types, with confidence, up to 3 alternatives when uncertain, and its location. ${PAGE_NOTE}`) }],
     jsonSchema: s.object({ clauses: s.array(CLAUSE_SCHEMA) }),

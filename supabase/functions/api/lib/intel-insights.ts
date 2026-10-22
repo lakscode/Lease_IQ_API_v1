@@ -4,7 +4,8 @@
 // lease_insights.rent_schedule: RentPeriod[]  — percentages are plain percent numbers (8.4 = 8.4 %).
 // lease_insights.cam_terms:     CamTerms
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { callClaudeJson, languageInstruction, pdfBlock, s } from './ai.ts';
+import { languageInstruction, pdfBlock, s } from './ai.ts';
+import { callAiJson } from './ai-provider.ts';
 import { OPPORTUNITY_CATEGORIES } from './abstract.ts';
 import { db, must } from './supabase.ts';
 import { downloadBytes } from './storage.ts';
@@ -223,7 +224,7 @@ export async function generateInsights(input: { orgId: string; userId: string; l
     `Categories:\n${categories}`,
   ].join('\n\n');
 
-  const { data } = await callClaudeJson<InsightsOutput>(
+  const { data } = await callAiJson<InsightsOutput>(
     { process: 'insights', orgId, userId: input.userId, leaseId },
     { system, messages: [{ role: 'user', content: [...blocks, { type: 'text', text }] }], jsonSchema: INSIGHTS_SCHEMA, maxTokens: 32000, effort: 'high' },
   );

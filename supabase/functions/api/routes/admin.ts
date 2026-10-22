@@ -1,4 +1,4 @@
-// Super admin settings: AI model, email provider, users, organizations (incl. clause classifier), email domains.
+// Super admin settings: AI model, email provider, users, organizations (incl. AI provider and clause classifier), email domains.
 import { Hono, type Context } from 'hono';
 import type { User } from '@supabase/supabase-js';
 import type { AppEnv, Role } from '../lib/types.ts';
@@ -24,6 +24,8 @@ import { LEASE_CLAUSES } from '../lib/lease-clauses.ts';
 import { LLAMA_DEFAULT_MODEL, LLAMA_MODEL_RE } from '../lib/clause-llama.ts';
 import { CLAUSE_CLASSIFIERS, type ClauseClassifier } from '../lib/pipeline/clauses.ts';
 import { aiMode } from '../lib/pipeline/store.ts';
+import { AI_PROVIDERS, clearOrgAiCache, type AiProvider } from '../lib/ai-provider.ts';
+import { OPENAI_DEFAULT_MODEL, OPENAI_MODEL_RE, openaiConfigured, openaiModels } from '../lib/ai-openai.ts';
 
 const router = new Hono<AppEnv>();
 router.use('*', requireSuperAdmin);
@@ -56,6 +58,15 @@ router.put('/settings/ai-mode', async (c) => {
   if (mode !== 'economy' && mode !== 'quality') throw badRequest('Mode must be economy or quality');
   await setSetting(SETTINGS.aiMode, mode, c.get('user').id);
   return c.json({ ai_mode: mode });
+});
+
+// GET /api/admin/ai-providers → the AI providers an organization can use, with their models (Organizations → Edit)
+router.get('/ai-providers', async (c) => {
+  return c.json({
+    providers: AI_PROVIDERS,
+    claude: { configured: Boolean(env.anthropicApiKey), default_model: await getModel(), models: SUPPORTED_MODELS },
+    openai: { configured: openaiConfigured(), default_model: OPENAI_DEFAULT_MODEL, models: await openaiModels() },
+  });
 });
 
 // PUT /api/admin/settings/email — provider 'default' (SMTP mailbox) or 'sendgrid', sender, SMTP server, secrets.
@@ -318,8 +329,8 @@ router.get('/clause-classifiers', async (c) => {
 router.get('/prediction-catalog', async (c) => {
   const svm = await clauseSvmInfo();
   const trained = new Map(svm.clause_types.map((ct) => [ct.id, ct.examples]));
-  const orgs = must(await db().from('organizations').select('id, name, clause_classifier, clause_model').order('name')) as
-    { id: string; name: string; clause_classifier: string; clause_model: string | null }[];
+  const orgs = must(await db().from('organizations').select('id, name, clause_classifier, clause_model, ai_provider, ai_model').order('name')) as
+    { id: string; name: string; clause_classifier: string; clause_model: string | null; ai_provider: string; ai_model: string | null }[];
   return c.json({
     fields: ABSTRACT_FIELDS.map((f) => ({ key: f.key, label: f.label, kind: f.kind, group: f.group, lease_column: f.leaseColumn ?? null })),
     lease_clauses: Object.entries(LEASE_CLAUSES).map(([id, name]) => ({
@@ -330,7 +341,7 @@ router.get('/prediction-catalog', async (c) => {
       trained_at: svm.trained_at, clause_types: svm.clause_types.length,
       accuracy: svm.metrics?.accuracy ?? null, macro_f1: svm.metrics?.macro_f1 ?? null, cv_examples: svm.metrics?.examples ?? null,
     },
-    orgs: orgs.map((o) => ({ id: o.id, name: o.name, classifier: o.clause_classifier, model: o.clause_model })),
+    orgs: orgs.map((o) => ({ id: o.id, name: o.name, classifier: o.clause_classifier, model: o.clause_model, ai_provider: o.ai_provider, ai_model: o.ai_model })),
   });
 });
 
@@ -416,6 +427,18 @@ router.post('/svm/use-built-in', async (c) => {
   return c.json({ ok: true });
 });
 
+/** Validate ai_provider / ai_model from a request body (only the keys present). ai_model null = the provider's default. */
+function aiUpdate(body: Record<string, unknown>, current?: { ai_provider: string; ai_model: string | null }): Record<string, string | null> {
+  if (!('ai_provider' in body) && !('ai_model' in body)) return {};
+  const provider = (str(body.ai_provider) ?? current?.ai_provider ?? 'claude') as AiProvider;
+  if (!AI_PROVIDERS.includes(provider)) throw badRequest('AI provider must be claude or openai');
+  // Keep the saved model only while the provider stays the same.
+  const model = 'ai_model' in body ? str(body.ai_model) : provider === current?.ai_provider ? current.ai_model : null;
+  if (model && provider === 'claude' && !SUPPORTED_MODELS.some((m) => m.id === model)) throw badRequest('Unsupported Claude model');
+  if (model && provider === 'openai' && !OPENAI_MODEL_RE.test(model)) throw badRequest('Choose an OpenAI model, e.g. "gpt-5.5"');
+  return { ai_provider: provider, ai_model: model ? model.slice(0, 80) : null };
+}
+
 /** Validate clause_classifier / clause_model from a request body (only the keys present). */
 function classifierUpdate(body: Record<string, unknown>, current?: { clause_classifier: string; clause_model: string | null }): Record<string, string | null> {
   if (!('clause_classifier' in body) && !('clause_model' in body)) return {};
@@ -441,15 +464,15 @@ function classifierUpdate(body: Record<string, unknown>, current?: { clause_clas
 // ---- Organizations ---------------------------------------------------------------------------
 
 router.get('/orgs', async (c) => {
-  const orgs = must(await db().from('organizations').select('id, name, currency, logo_path, created_at, clause_classifier, clause_model').order('name')) as
-    { id: string; name: string; currency: string; logo_path: string | null; created_at: string; clause_classifier: string; clause_model: string | null }[];
+  const orgs = must(await db().from('organizations').select('id, name, currency, logo_path, created_at, clause_classifier, clause_model, ai_provider, ai_model').order('name')) as
+    { id: string; name: string; currency: string; logo_path: string | null; created_at: string; clause_classifier: string; clause_model: string | null; ai_provider: string; ai_model: string | null }[];
   const { data: domains } = await db().from('org_domains').select('org_id, domain');
   const countOf = async (table: string, orgId: string) =>
     (await db().from(table).select('*', { count: 'exact', head: true }).eq('org_id', orgId)).count ?? 0;
   return c.json(
     await Promise.all(orgs.map(async (o) => ({
       id: o.id, name: o.name, currency: o.currency, logo_url: publicLogoUrl(o.logo_path), created_at: o.created_at,
-      clause_classifier: o.clause_classifier, clause_model: o.clause_model,
+      clause_classifier: o.clause_classifier, clause_model: o.clause_model, ai_provider: o.ai_provider, ai_model: o.ai_model,
       member_count: await countOf('org_members', o.id),
       lease_count: await countOf('leases', o.id),
       file_count: await countOf('lease_files', o.id),
@@ -465,8 +488,8 @@ router.post('/orgs', async (c) => {
   if (!name) throw badRequest('Organization name is required');
   const currency = (str(body.currency) ?? 'USD').toUpperCase();
   if (!CURRENCIES.includes(currency)) throw badRequest('Unsupported currency');
-  const org = must(await db().from('organizations').insert({ name: name.slice(0, 120), currency, created_by: c.get('user').id, ...classifierUpdate(body) })
-    .select('id, name, currency, clause_classifier, clause_model').single()) as { id: string; name: string; currency: string };
+  const org = must(await db().from('organizations').insert({ name: name.slice(0, 120), currency, created_by: c.get('user').id, ...classifierUpdate(body), ...aiUpdate(body) })
+    .select('id, name, currency, clause_classifier, clause_model, ai_provider, ai_model').single()) as { id: string; name: string; currency: string };
   if (body.add_me === true) await addMember(org.id, c.get('user').id, 'admin', c.get('user').email ?? null);
   return c.json(org, 201);
 });
@@ -475,8 +498,9 @@ router.patch('/orgs/:id', async (c) => {
   const id = c.req.param('id');
   await loadOrg(id);
   const body = await readJson(c);
-  const current = must(await db().from('organizations').select('clause_classifier, clause_model').eq('id', id).single()) as { clause_classifier: string; clause_model: string | null };
-  const update: Record<string, string | null> = { ...classifierUpdate(body, current) };
+  const current = must(await db().from('organizations').select('clause_classifier, clause_model, ai_provider, ai_model').eq('id', id).single()) as
+    { clause_classifier: string; clause_model: string | null; ai_provider: string; ai_model: string | null };
+  const update: Record<string, string | null> = { ...classifierUpdate(body, current), ...aiUpdate(body, current) };
   if ('name' in body) {
     const name = str(body.name);
     if (!name) throw badRequest('Organization name is required');
@@ -488,7 +512,9 @@ router.patch('/orgs/:id', async (c) => {
     update.currency = currency;
   }
   if (!Object.keys(update).length) throw badRequest('Nothing to update');
-  return c.json(must(await db().from('organizations').update(update).eq('id', id).select('id, name, currency, clause_classifier, clause_model').single()));
+  const saved = must(await db().from('organizations').update(update).eq('id', id).select('id, name, currency, clause_classifier, clause_model, ai_provider, ai_model').single());
+  clearOrgAiCache(id);
+  return c.json(saved);
 });
 
 router.delete('/orgs/:id', async (c) => {
