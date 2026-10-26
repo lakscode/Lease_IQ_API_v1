@@ -1,7 +1,8 @@
 // Applies Lease IQ's Supabase Auth settings through the Management API (idempotent):
 //   - Site URL and redirect allow-list
 //   - branded password recovery email (subject + docs/email-templates/recovery.html)
-// Usage: node scripts/account-auth-templates.mjs [--dry-run] [--site-url=http://localhost:8080] [--redirect=https://app.example.com/**]
+// Usage: node scripts/account-auth-templates.mjs [--dry-run] [--urls-only] [--site-url=http://localhost:8080] [--redirect=https://app.example.com/**]
+// --urls-only skips the email template (free-tier projects on the default email provider can't change templates).
 // Needs SUPABASE_URL and SUPABASE_ACCESS_TOKEN (a personal access token) in API/.env.
 import 'dotenv/config';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const arg = (name) => args.filter((a) => a.startsWith(`--${name}=`)).map((a) => a.slice(name.length + 3));
 const dryRun = args.includes('--dry-run');
+const urlsOnly = args.includes('--urls-only');
 
 const url = process.env.SUPABASE_URL;
 const token = process.env.SUPABASE_ACCESS_TOKEN;
@@ -43,8 +45,10 @@ const allowList = [...new Set([...existing, ...wanted])].join(',');
 const patch = {
   site_url: siteUrl,
   uri_allow_list: allowList,
-  mailer_subjects_recovery: 'Reset your Lease IQ password',
-  mailer_templates_recovery_content: recoveryHtml,
+  ...(urlsOnly ? {} : {
+    mailer_subjects_recovery: 'Reset your Lease IQ password',
+    mailer_templates_recovery_content: recoveryHtml,
+  }),
 };
 
 const changed = Object.fromEntries(Object.entries(patch).filter(([k, v]) => config[k] !== v));
