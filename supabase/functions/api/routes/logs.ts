@@ -1,4 +1,7 @@
 // GET /logs — the error log, for the UI (Logs page) and for scripts.
+// GET /logs/api — the API request log (every request, success or error), same access.
+//   Query: outcome (success|error|client_error|server_error), method, path, user (email), org_id,
+//          since (ISO or 30m/24h/7d), min_ms, limit (≤1000) → { summary, rows }
 // Access: a signed-in super admin, or `Authorization: Bearer <LOGS_API_TOKEN>` when that env var is set.
 // Query: area, level (error|warning), source (ui|api), since (ISO or 30m/24h/7d), q (text), limit (≤1000),
 //        format=json (default) | text (one line per entry, handy with curl).
@@ -8,6 +11,7 @@ import { db } from '../lib/supabase.ts';
 import { getEnv } from '../lib/runtime.ts';
 import { ApiError, forbidden } from '../lib/http.ts';
 import { listErrorLogs } from '../lib/error-log.ts';
+import { listRequestLogs } from '../lib/api-request-log.ts';
 
 const router = new Hono<AppEnv>();
 
@@ -49,6 +53,20 @@ router.get('/', async (c) => {
     return c.text(lines.length ? `${lines.join('\n')}\n` : 'No log entries.\n');
   }
   return c.json(rows);
+});
+
+router.get('/api', async (c) => {
+  await authorize(c);
+  return c.json(await listRequestLogs({
+    outcome: c.req.query('outcome'),
+    method: c.req.query('method'),
+    path: c.req.query('path'),
+    user: c.req.query('user'),
+    org_id: c.req.query('org_id'),
+    since: c.req.query('since'),
+    min_ms: Number(c.req.query('min_ms')) || null,
+    limit: Number(c.req.query('limit')) || undefined,
+  }));
 });
 
 export default router;

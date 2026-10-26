@@ -25,7 +25,7 @@ function claims(c: Context<AppEnv>): TokenClaims {
   }
 }
 
-function clientIp(c: Context<AppEnv>): string | null {
+export function clientIp(c: Context<AppEnv>): string | null {
   const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
   return (c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || forwarded || null)?.slice(0, 64) ?? null;
 }

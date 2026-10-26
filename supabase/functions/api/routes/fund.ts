@@ -5,6 +5,8 @@
 //   GET    /funds/:id                        fund, metrics, capital accounts, commitments, calls, distributions, NAVs, leases
 //   GET    /funds/:id/capital-accounts.csv   (download)
 //   POST   /funds/:id/leases { lease_id }    DELETE /funds/:id/leases/:leaseId
+//   GET    /property-map                     every lease with its fund (fund_id null = unassigned), and the funds
+//   PUT    /property-map { lease_ids, fund_id }   assign leases to a fund (moving them), or fund_id null to unassign
 //   GET    /investors                        investors with commitments and totals   POST   PATCH/DELETE /investors/:id
 //   POST   /commitments { fund_id, investor_id, amount, commitment_date }            PATCH/DELETE /commitments/:id
 //   GET    /valuations?fund_id               POST /valuations { fund_id, as_of_date, nav, notes }   DELETE /valuations/:id
@@ -207,6 +209,50 @@ router.delete('/funds/:id/leases/:leaseId', requireRole('editor'), async (c) => 
   must(await db().from('fund_leases').delete()
     .eq('org_id', c.get('orgId')).eq('fund_id', fund.id).eq('lease_id', c.req.param('leaseId')));
   return c.json({ deleted: true });
+});
+
+// ---- Fund ↔ property mapping ------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+router.get('/property-map', async (c) => {
+  const orgId = c.get('orgId');
+  const [leases, links, funds] = await Promise.all([
+    db().from('leases')
+      .select('id, tenant_name, landlord_name, premises_address, property_type, rentable_area, base_rent_monthly, expiration_date, status')
+      .eq('org_id', orgId).order('tenant_name'),
+    db().from('fund_leases').select('fund_id, lease_id').eq('org_id', orgId),
+    db().from('funds').select('id, name, status').eq('org_id', orgId).order('name'),
+  ]);
+  const fundOf = new Map((must(links) as { fund_id: string; lease_id: string }[]).map((l) => [l.lease_id, l.fund_id]));
+  const rows = (must(leases) as { id: string; rentable_area: number | string | null; base_rent_monthly: number | string | null }[]).map((l) => ({
+    ...l,
+    rentable_area: l.rentable_area === null ? null : Number(l.rentable_area),
+    base_rent_monthly: l.base_rent_monthly === null ? null : Number(l.base_rent_monthly),
+    fund_id: fundOf.get(l.id) ?? null,
+  }));
+  return c.json({ funds: must(funds), leases: rows });
+});
+
+router.put('/property-map', requireRole('editor'), async (c) => {
+  const orgId = c.get('orgId');
+  const body = await readJson<{ lease_ids?: unknown; fund_id?: unknown }>(c);
+  const ids = Array.isArray(body.lease_ids) ? [...new Set(body.lease_ids.map(String).filter((id) => UUID_RE.test(id)))] : [];
+  if (!ids.length) throw badRequest('Choose at least one property.');
+  if (ids.length > 1000) throw badRequest('You can map at most 1000 properties at once.');
+  const fundId = body.fund_id === null || body.fund_id === '' ? null : bodyId(body.fund_id, 'Fund');
+  if (fundId) await getOrgRow(c, 'funds', fundId, 'id');
+
+  // Only this organization's leases.
+  const owned = (must(await db().from('leases').select('id').eq('org_id', orgId).in('id', ids)) as { id: string }[]).map((l) => l.id);
+  if (owned.length !== ids.length) throw new ApiError('not_found', 'Some properties were not found.');
+
+  if (fundId) {
+    must(await db().from('fund_leases').upsert(owned.map((leaseId) => ({ org_id: orgId, fund_id: fundId, lease_id: leaseId })), { onConflict: 'lease_id' }));
+  } else {
+    must(await db().from('fund_leases').delete().eq('org_id', orgId).in('lease_id', owned));
+  }
+  return c.json({ updated: owned.length, fund_id: fundId });
 });
 
 // ---- Investors & commitments -----------------------------------------------------------------

@@ -29,14 +29,16 @@ import logs from './routes/logs.ts';
 import clauses from './routes/clauses.ts';
 import fund from './routes/fund.ts';
 import { log } from './lib/log.ts';
+import { recordRequest } from './lib/api-request-log.ts';
 
 /** Paths (relative to /api) that don't require a signed-in user. */
-const PUBLIC_PATHS = [/^\/?$/, /^\/health$/, /^\/status$/, /^\/config$/, /^\/invites\/preview\//, /^\/client-errors$/, /^\/logs$/];
+const PUBLIC_PATHS = [/^\/?$/, /^\/health$/, /^\/status$/, /^\/config$/, /^\/invites\/preview\//, /^\/client-errors$/, /^\/logs(\/api)?$/];
 
 export function createApp() {
   const api = new Hono<AppEnv>();
 
-  // One log line per request: method, path, status, duration, user and organization.
+  // One log line per request (method, path, status, duration, user, organization), also stored in
+  // api_request_log for Logs → API logs.
   api.use('*', async (c, next) => {
     const started = Date.now();
     await next();
@@ -49,6 +51,7 @@ export function createApp() {
     };
     // 5xx are logged as errors by errorResponse (with the cause); here only the access line.
     log.info('http', `${c.req.method} ${c.req.path} ${status} ${ctx.ms}ms`, ctx);
+    recordRequest(c, started);
   });
 
   api.use('*', async (c, next) => {
@@ -77,7 +80,7 @@ export function createApp() {
   api.route('/clauses', clauses);   // SVM clause prediction
   api.route('/fund', fund);         // fund administration (+ routes/fund-transactions.ts)
   api.route('/client-errors', clientErrors);
-  api.route('/logs', logs);         // checks its own auth (super admin or LOGS_API_TOKEN)
+  api.route('/logs', logs);         // /logs, /logs/api — check their own auth (super admin or LOGS_API_TOKEN)
 
   const app = new Hono<AppEnv>();
   app.use(
