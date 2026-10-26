@@ -27,6 +27,7 @@ import imports from './routes/imports.ts';
 import clientErrors from './routes/client-errors.ts';
 import logs from './routes/logs.ts';
 import clauses from './routes/clauses.ts';
+import fund from './routes/fund.ts';
 import { log } from './lib/log.ts';
 
 /** Paths (relative to /api) that don't require a signed-in user. */
@@ -74,6 +75,7 @@ export function createApp() {
   api.route('/reports', reports);
   api.route('/imports', imports);
   api.route('/clauses', clauses);   // SVM clause prediction
+  api.route('/fund', fund);         // fund administration (+ routes/fund-transactions.ts)
   api.route('/client-errors', clientErrors);
   api.route('/logs', logs);         // checks its own auth (super admin or LOGS_API_TOKEN)
 
